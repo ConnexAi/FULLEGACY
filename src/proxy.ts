@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { esCorreoAutorizado } from "@/lib/config/env";
+import { esCorreoAutorizado } from "@/lib/auth/autorizacion";
 import { crearClienteProxy } from "@/lib/supabase/proxy";
 
 /** Rutas accesibles sin sesión. Todo lo demás exige el correo autorizado. */
@@ -38,8 +38,10 @@ export async function proxy(request: NextRequest) {
   }
 
   // Cinturón y tirantes: si por lo que sea existe una sesión de otro correo,
-  // se corta aquí también.
-  if (!esCorreoAutorizado(user.email)) {
+  // se corta aquí también. Esto es además lo que permite revocar el acceso
+  // borrando la fila de `usuarios_autorizados` sin esperar a que expire la
+  // sesión (la cláusula de pausa por pago del acuerdo).
+  if (!(await esCorreoAutorizado(user.email))) {
     await supabase.auth.signOut();
     const destino = request.nextUrl.clone();
     destino.pathname = "/login";

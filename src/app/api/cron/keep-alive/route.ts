@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { envServidor } from "@/lib/config/env";
-import { crearClienteAdmin } from "@/lib/supabase/server";
+import { crearClienteAdmin } from "@/lib/supabase/admin";
 
 /**
  * Keep-alive de Supabase.

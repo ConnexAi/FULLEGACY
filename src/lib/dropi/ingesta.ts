@@ -7,7 +7,7 @@ import {
   type ResumenArchivo,
   type ResumenGuardado,
 } from "@/lib/dropi/tipos";
-import { crearClienteAdmin } from "@/lib/supabase/server";
+import { crearClienteAdmin } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/types";
 
 /** Cuántos errores de fila se devuelven al navegador (el conteo total sí es completo). */

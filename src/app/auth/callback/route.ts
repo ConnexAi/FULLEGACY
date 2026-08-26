@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { esCorreoAutorizado } from "@/lib/config/env";
+import { esCorreoAutorizado } from "@/lib/auth/autorizacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 /**
@@ -12,6 +12,7 @@ import { crearClienteServidor } from "@/lib/supabase/server";
  *
  * Es la segunda línea de defensa: el trigger sobre `auth.users` ya impide que
  * se cree la cuenta (ver supabase/migrations/20260825120100_restriccion_acceso.sql).
+ * Ambas capas leen la misma tabla `usuarios_autorizados`.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -34,7 +35,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=fallo_intercambio`);
   }
 
-  if (!esCorreoAutorizado(data.user.email)) {
+  // `refrescar` salta el cache: si acabas de agregar un correo a la tabla,
+  // debe poder entrar de inmediato y no cuando venza el TTL.
+  if (!(await esCorreoAutorizado(data.user.email, { refrescar: true }))) {
     await supabase.auth.signOut();
     return NextResponse.redirect(`${origin}/login?error=no_autorizado`);
   }

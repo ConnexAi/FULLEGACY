@@ -8,8 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test:sql": "node pruebas/sql.test.mjs",
-    "test:ingesta": "tsx pruebas/e2e.test.mts",
-    "test": "npm run test:sql && npm run test:ingesta"
+    "test:ingesta": "tsx --conditions=react-server pruebas/e2e.test.mts",
+    "test": "npm run test:sql && npm run test:privilegios && npm run test:ingesta && npm run test:autorizacion",
+    "test:privilegios": "node pruebas/privilegios.test.mjs",
+    "test:autorizacion": "tsx --conditions=react-server pruebas/autorizacion.test.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
@@ -27,6 +29,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5"

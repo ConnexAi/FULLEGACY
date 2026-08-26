@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { BotonGoogle } from "@/app/login/boton-google";
-import { esCorreoAutorizado } from "@/lib/config/env";
+import { esCorreoAutorizado } from "@/lib/auth/autorizacion";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -28,7 +28,7 @@ export default async function PaginaLogin({
   } = await supabase.auth.getUser();
 
   // Ya hay una sesión válida: no tiene sentido mostrar el login.
-  if (user && esCorreoAutorizado(user.email)) {
+  if (user && (await esCorreoAutorizado(user.email))) {
     redirect("/");
   }
 

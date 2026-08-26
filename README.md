@@ -90,9 +90,12 @@ El sistema es de **un solo usuario**. No hay registro público. Hay tres capas:
    no coincide.
 3. **Proxy** — `src/proxy.ts` bloquea toda ruta que no sea pública.
 
-Para cambiar el correo autorizado no hace falta redesplegar: basta actualizar la
-fila en `public.usuarios_autorizados` (y `NEXT_PUBLIC_ALLOWED_EMAIL` si se quiere
-que la app lo refleje también en cliente).
+`public.usuarios_autorizados` es la **única fuente de verdad**: la consultan
+tanto el trigger de la base de datos como la app (`src/lib/auth/autorizacion.ts`,
+con la service_role key, porque la tabla tiene RLS y ninguna policy de lectura).
+Agregar o quitar un acceso es un INSERT/DELETE en esa tabla — sin redeploy y sin
+variables de entorno. La app cachea la lista 30 s, salvo en el login, que siempre
+la relee para que un correo recién agregado pueda entrar de inmediato.
 
 ## Ingesta de archivos
 

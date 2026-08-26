@@ -37,18 +37,3 @@ export const envServidor = {
     ),
   cronSecret: () => requerido("CRON_SECRET", process.env.CRON_SECRET),
 } as const;
-
-/**
- * Único correo autorizado. Se normaliza a minúsculas porque Google puede
- * devolver el correo con mayúsculas distintas a las configuradas.
- */
-export const CORREO_AUTORIZADO = (
-  process.env.NEXT_PUBLIC_ALLOWED_EMAIL ?? "Diegoperea093@gmail.com"
-)
-  .trim()
-  .toLowerCase();
-
-export function esCorreoAutorizado(correo: string | null | undefined): boolean {
-  if (!correo) return false;
-  return correo.trim().toLowerCase() === CORREO_AUTORIZADO;
-}

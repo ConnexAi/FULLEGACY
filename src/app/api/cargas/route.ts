@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { esCorreoAutorizado } from "@/lib/config/env";
+import { esCorreoAutorizado } from "@/lib/auth/autorizacion";
 import { ingerirArchivo } from "@/lib/dropi/ingesta";
 import type { ResumenArchivo } from "@/lib/dropi/tipos";
 import { crearClienteServidor } from "@/lib/supabase/server";
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user || !esCorreoAutorizado(user.email)) {
+  if (!user || !(await esCorreoAutorizado(user.email))) {
     return NextResponse.json({ error: "No autorizado." }, { status: 401 });
   }
 
