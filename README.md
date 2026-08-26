@@ -3,8 +3,9 @@
 Sistema de reportes de pedidos a partir de los exports de Excel de Dropi.
 Cliente: Diego Perea (fulfillment).
 
-**Estado: Sprint 0 — solo infraestructura.** No hay parser de Excel, ni reportes,
-ni dashboard todavía.
+**Estado: Sprint 1 — ingesta.** Ya se pueden cargar los Excel de Dropi y quedan
+guardadas las órdenes, productos y variaciones. El Reporte Ordenado, el
+historial mensual y el dashboard son de sprints posteriores.
 
 ## Stack
 
@@ -16,6 +17,7 @@ ni dashboard todavía.
 | Autenticación  | Supabase Auth + Google OAuth               |
 | Hosting        | Vercel (subdominio gratuito)               |
 | Keep-alive     | Vercel Cron → `/api/cron/keep-alive`       |
+| Lectura Excel  | ExcelJS                                    |
 
 ## Puesta en marcha
 
@@ -32,6 +34,8 @@ ni dashboard todavía.
    O pegando cada archivo en el **SQL Editor** del dashboard, en este orden:
    1. `20260825120000_esquema_inicial.sql`
    2. `20260825120100_restriccion_acceso.sql`
+   3. `20260826090000_ordenes_numero_guia.sql`
+   4. `20260826090100_procesar_carga.sql`
 
 3. **Authentication → Providers → Google**: activarlo y pegar el Client ID y el
    Client Secret de Google Cloud.
@@ -90,6 +94,41 @@ Para cambiar el correo autorizado no hace falta redesplegar: basta actualizar la
 fila en `public.usuarios_autorizados` (y `NEXT_PUBLIC_ALLOWED_EMAIL` si se quiere
 que la app lo refleje también en cliente).
 
+## Ingesta de archivos
+
+Diego sube uno o varios `.xlsx` en `/cargas`. Por cada archivo:
+
+1. **Parseo** — se leen solo las 11 columnas relevantes de las 54 del export.
+   Si falta una columna crítica (`ID`, `ESTATUS`, `PRODUCTO ID`, `VARIACION ID`)
+   el archivo se rechaza completo, sin procesar ninguna fila.
+2. **Filas con error** — una fila con datos inconsistentes se registra y se
+   omite, pero no tumba el archivo. Aparecen en el resumen con su número de fila.
+3. **Guardado** — todo el archivo se persiste en una sola llamada a
+   `procesar_carga()`, que Postgres ejecuta como una transacción. O queda el
+   archivo completo, o no queda nada.
+
+**Control de duplicados:** si el `ID` de una orden ya existe, esa orden se
+omite entera — no se reinserta ni se actualiza, y no se tocan sus líneas.
+Subir el mismo archivo dos veces es inofensivo.
+
+**Combos:** una orden que ocupa varias filas del Excel se guarda como varias
+filas de `orden_productos` con el mismo `orden_id`.
+
+## Pruebas
+
+```bash
+npm test
+```
+
+Levanta un Postgres real en WASM ([PGlite](https://pglite.dev)), aplica las
+migraciones del repo y verifica la ingesta de punta a punta contra un `.xlsx`
+generado con la forma real del export de Dropi. No necesita conexión a Supabase
+ni credenciales.
+
+- `pruebas/sql.test.mjs` — comportamiento de `procesar_carga()`: duplicados,
+  combos, variación repetida, atomicidad.
+- `pruebas/e2e.test.mts` — parser → agrupador → base de datos.
+
 ## Modelo de datos
 
 ```
@@ -104,11 +143,16 @@ duplicados entre cargas sea un `on conflict do nothing`.
 `orden_productos` admite varias filas por orden: así se representan los combos,
 y cada producto que los compone se cuenta individualmente en los reportes.
 
+**Zona horaria:** las fechas del Excel no traen zona. Se interpretan como hora
+de pared de América/Bogotá (UTC-5) y se guardan como `timestamptz`. Esto importa
+para el historial mensual, que agrupa por día.
+
 ## Verificación
 
 ```bash
 npx tsc --noEmit
 npx eslint .
+npm test
 npm run build
 ```
 # FULLEGACY

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { crearClienteServidor } from "@/lib/supabase/server";
@@ -25,9 +26,18 @@ export default async function Inicio() {
         </p>
       </header>
 
+      <nav className="flex flex-col gap-3">
+        <Link
+          href="/cargas"
+          className="rounded-lg border border-black/10 px-4 py-3 text-sm font-medium transition hover:bg-neutral-100 dark:border-white/15 dark:hover:bg-neutral-800"
+        >
+          Cargar archivo de Dropi →
+        </Link>
+      </nav>
+
       <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
-        Infraestructura lista. La carga de archivos, los reportes y el dashboard
-        se construyen en los siguientes sprints.
+        El Reporte Ordenado, el historial mensual y el dashboard se construyen
+        en los siguientes sprints.
       </p>
 
       <form action="/auth/sign-out" method="post">

@@ -1,0 +1,31 @@
+import Link from "next/link";
+
+import { FormularioCarga } from "@/app/cargas/formulario-carga";
+
+export const metadata = {
+  title: "Cargar archivo · FULLEGACY",
+};
+
+export default function PaginaCargas() {
+  return (
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
+      <header className="flex flex-col gap-1">
+        <Link
+          href="/"
+          className="text-sm text-neutral-500 hover:underline dark:text-neutral-400"
+        >
+          ← Inicio
+        </Link>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Cargar archivo de Dropi
+        </h1>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          Sube el Excel exportado de Dropi. Se registran las órdenes nuevas y se
+          arma solo el catálogo de productos y variaciones.
+        </p>
+      </header>
+
+      <FormularioCarga />
+    </main>
+  );
+}

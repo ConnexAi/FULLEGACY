@@ -76,6 +76,7 @@ export interface Database {
           estado: string;
           fecha_orden: string;
           fecha_guia_generada: string | null;
+          numero_guia: string | null;
           creado_en: string;
         };
         Insert: {
@@ -83,6 +84,7 @@ export interface Database {
           estado: string;
           fecha_orden: string;
           fecha_guia_generada?: string | null;
+          numero_guia?: string | null;
           creado_en?: string;
         };
         Update: {
@@ -90,6 +92,7 @@ export interface Database {
           estado?: string;
           fecha_orden?: string;
           fecha_guia_generada?: string | null;
+          numero_guia?: string | null;
           creado_en?: string;
         };
         Relationships: [];
@@ -151,7 +154,13 @@ export interface Database {
       };
     };
     Views: Record<never, never>;
-    Functions: Record<never, never>;
+    Functions: {
+      /** Ingesta transaccional de una carga completa. Ver supabase/migrations/20260826090100_procesar_carga.sql */
+      procesar_carga: {
+        Args: { p_carga: Json };
+        Returns: Json;
+      };
+    };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;
   };
