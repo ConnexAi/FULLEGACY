@@ -107,7 +107,13 @@ function construirFila(
 ): FilaDropi {
   const idOrden = leerEntero(fila, mapa, "ID");
   const productoId = leerEntero(fila, mapa, "PRODUCTO_ID");
-  const variacionId = leerEntero(fila, mapa, "VARIACION_ID");
+
+  // La mayoría de los productos de Diego no maneja variantes en Dropi y viene
+  // sin VARIACION ID. Eso NO es un error de fila: la línea se guarda apuntando
+  // al producto directo. Si la celda trae algo, tiene que ser un id válido.
+  const variacionId = leerEnteroOpcional(fila, mapa, "VARIACION_ID", {
+    exigirSiPresente: true,
+  });
 
   const estado = leerTexto(fila, mapa, "ESTATUS");
   if (!estado) {
@@ -162,15 +168,28 @@ function leerCantidad(fila: ExcelJS.Row, mapa: MapaColumnas): number {
   return numero;
 }
 
-/** Igual que `leerEntero` pero devuelve `null` en vez de lanzar. */
+/**
+ * Lee un entero que puede no venir.
+ *
+ * Con `exigirSiPresente`, una celda vacía devuelve `null` pero una celda con
+ * basura sí lanza: distinguir "no aplica" de "dato malo" es justamente lo que
+ * hacía falta para VARIACION ID.
+ */
 function leerEnteroOpcional(
   fila: ExcelJS.Row,
   mapa: MapaColumnas,
   columna: ColumnaDropi,
+  opciones: { exigirSiPresente?: boolean } = {},
 ): number | null {
+  const crudo = leerCrudo(fila, mapa, columna);
+  if (crudo === null || crudo === undefined || String(crudo).trim() === "") {
+    return null;
+  }
+
   try {
     return leerEntero(fila, mapa, columna);
-  } catch {
+  } catch (error) {
+    if (opciones.exigirSiPresente) throw error;
     return null;
   }
 }

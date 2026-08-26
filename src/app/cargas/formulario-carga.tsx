@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import type { ResumenArchivo } from "@/lib/dropi/tipos";
@@ -13,6 +15,7 @@ type Estado =
 export function FormularioCarga() {
   const [estado, setEstado] = useState<Estado>({ fase: "inicial" });
   const inputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   async function enviar(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -38,6 +41,8 @@ export function FormularioCarga() {
 
       setEstado({ fase: "listo", resumenes: cuerpo.resumenes ?? [] });
       inputRef.current!.value = "";
+      // Vuelve a renderizar el listado de cargas del servidor con la nueva fila.
+      router.refresh();
     } catch {
       setEstado({
         fase: "error",
@@ -113,7 +118,16 @@ function TarjetaResumen({ resumen }: { resumen: ResumenArchivo }) {
       }`}
     >
       <h3 className="font-mono text-sm font-medium break-all">
-        {resumen.archivo}
+        {resumen.cargaId ? (
+          <Link
+            href={`/cargas/${resumen.cargaId}`}
+            className="underline underline-offset-2 hover:no-underline"
+          >
+            {resumen.archivo}
+          </Link>
+        ) : (
+          resumen.archivo
+        )}
       </h3>
 
       {resumen.error ? (

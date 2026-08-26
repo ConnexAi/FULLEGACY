@@ -12,7 +12,11 @@ export interface FilaDropi {
   productoId: number;
   productoNombre: string;
   sku: string | null;
-  variacionId: number;
+  /**
+   * NULL cuando el producto no maneja variantes en Dropi. Es el caso de 18 de
+   * los 21 productos de Diego: no es un dato faltante, es que no aplica.
+   */
+  variacionId: number | null;
   textoVariacion: string | null;
   cantidad: number;
 }
@@ -47,7 +51,18 @@ export class ErrorArchivoDropi extends Error {
 
 /** Cuerpo que recibe la función `procesar_carga` en Postgres. */
 export interface CargaParaGuardar {
-  productos: { id: number; nombre: string }[];
+  /** Metadatos del archivo, para la fila de `cargas`. */
+  archivo: {
+    nombre: string;
+    filas_leidas: number;
+    filas_con_error: number;
+  };
+  productos: {
+    id: number;
+    nombre: string;
+    /** Solo para productos sin variantes; si las tiene, el SKU va en la variación. */
+    sku: string | null;
+  }[];
   variaciones: {
     id: number;
     producto_id: number;
@@ -61,12 +76,17 @@ export interface CargaParaGuardar {
     fecha_orden: string;
     fecha_guia_generada: string | null;
     numero_guia: string | null;
-    lineas: { variacion_id: number; cantidad: number }[];
+    lineas: {
+      producto_id: number;
+      variacion_id: number | null;
+      cantidad: number;
+    }[];
   }[];
 }
 
 /** Lo que devuelve `procesar_carga`. */
 export interface ResumenGuardado {
+  carga_id: number;
   ordenes_nuevas: number;
   ordenes_omitidas: number;
   ids_omitidos: number[];
@@ -79,6 +99,8 @@ export interface ResumenGuardado {
 export interface ResumenArchivo {
   archivo: string;
   ok: boolean;
+  /** Id de la fila en `cargas`. Presente solo si el archivo se guardó. */
+  cargaId?: number;
   /** Presente solo si el archivo se abortó completo. */
   error?: string;
   filasLeidas: number;

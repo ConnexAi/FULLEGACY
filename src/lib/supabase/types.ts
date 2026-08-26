@@ -22,17 +22,57 @@ export interface Database {
         Row: {
           id: number;
           nombre: string;
+          /** Solo para productos sin variantes. */
+          sku: string | null;
           creado_en: string;
         };
         Insert: {
           id: number;
           nombre: string;
+          sku?: string | null;
           creado_en?: string;
         };
         Update: {
           id?: number;
           nombre?: string;
+          sku?: string | null;
           creado_en?: string;
+        };
+        Relationships: [];
+      };
+      cargas: {
+        Row: {
+          id: number;
+          nombre_archivo: string;
+          creado_en: string;
+          ordenes_nuevas: number;
+          ordenes_omitidas: number;
+          filas_leidas: number;
+          filas_con_error: number;
+          productos_nuevos: number;
+          variaciones_nuevas: number;
+        };
+        Insert: {
+          id?: never;
+          nombre_archivo: string;
+          creado_en?: string;
+          ordenes_nuevas?: number;
+          ordenes_omitidas?: number;
+          filas_leidas?: number;
+          filas_con_error?: number;
+          productos_nuevos?: number;
+          variaciones_nuevas?: number;
+        };
+        Update: {
+          id?: never;
+          nombre_archivo?: string;
+          creado_en?: string;
+          ordenes_nuevas?: number;
+          ordenes_omitidas?: number;
+          filas_leidas?: number;
+          filas_con_error?: number;
+          productos_nuevos?: number;
+          variaciones_nuevas?: number;
         };
         Relationships: [];
       };
@@ -77,6 +117,7 @@ export interface Database {
           fecha_orden: string;
           fecha_guia_generada: string | null;
           numero_guia: string | null;
+          carga_id: number;
           creado_en: string;
         };
         Insert: {
@@ -85,6 +126,7 @@ export interface Database {
           fecha_orden: string;
           fecha_guia_generada?: string | null;
           numero_guia?: string | null;
+          carga_id: number;
           creado_en?: string;
         };
         Update: {
@@ -93,29 +135,41 @@ export interface Database {
           fecha_orden?: string;
           fecha_guia_generada?: string | null;
           numero_guia?: string | null;
+          carga_id?: number;
           creado_en?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "ordenes_carga_id_fkey";
+            columns: ["carga_id"];
+            referencedRelation: "cargas";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       orden_productos: {
         Row: {
           id: number;
           orden_id: number;
-          variacion_id: number;
+          producto_id: number;
+          /** NULL cuando el producto no maneja variantes. */
+          variacion_id: number | null;
           cantidad: number;
           creado_en: string;
         };
         Insert: {
           id?: never;
           orden_id: number;
-          variacion_id: number;
+          producto_id: number;
+          variacion_id?: number | null;
           cantidad: number;
           creado_en?: string;
         };
         Update: {
           id?: never;
           orden_id?: number;
-          variacion_id?: number;
+          producto_id?: number;
+          variacion_id?: number | null;
           cantidad?: number;
           creado_en?: string;
         };
@@ -127,10 +181,16 @@ export interface Database {
             referencedColumns: ["id_orden"];
           },
           {
-            foreignKeyName: "orden_productos_variacion_id_fkey";
-            columns: ["variacion_id"];
-            referencedRelation: "producto_variaciones";
+            foreignKeyName: "orden_productos_producto_id_fkey";
+            columns: ["producto_id"];
+            referencedRelation: "productos";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orden_productos_variacion_producto_fkey";
+            columns: ["variacion_id", "producto_id"];
+            referencedRelation: "producto_variaciones";
+            referencedColumns: ["id", "producto_id"];
           },
         ];
       };

@@ -1,14 +1,18 @@
 import Link from "next/link";
 
 import { FormularioCarga } from "@/app/cargas/formulario-carga";
+import { ListaCargas } from "@/app/cargas/lista-cargas";
 
 export const metadata = {
   title: "Cargar archivo · FULLEGACY",
 };
 
+// El historial cambia con cada subida: no debe servirse cacheado.
+export const dynamic = "force-dynamic";
+
 export default function PaginaCargas() {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-6 py-12">
       <header className="flex flex-col gap-1">
         <Link
           href="/"
@@ -26,6 +30,11 @@ export default function PaginaCargas() {
       </header>
 
       <FormularioCarga />
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-semibold">Cargas anteriores</h2>
+        <ListaCargas />
+      </section>
     </main>
   );
 }

@@ -9,6 +9,9 @@ const M = [
   "20260826090000_ordenes_numero_guia.sql",
   "20260826090100_procesar_carga.sql",
   "20260826150000_privilegios_tablas.sql",
+  "20260826170000_linea_producto_directo.sql",
+  "20260826170100_historial_cargas.sql",
+  "20260826170200_procesar_carga_v2.sql",
 ];
 let fallos = 0;
 const ok = (c, t) => { if (!c) fallos++; console.log(`${c ? "  ok  " : "FALLA"} ${t}`); };
@@ -17,7 +20,7 @@ const db = await PGlite.create();
 await db.exec("create role anon; create role authenticated; create role service_role;");
 await db.exec("create schema auth; create table auth.users (id uuid primary key default gen_random_uuid(), email text);");
 for (const m of M) await db.exec(readFileSync(RAIZ + "supabase/migrations/" + m, "utf8"));
-console.log("las 5 migraciones aplicaron\n");
+console.log("las 8 migraciones aplicaron\n");
 
 const priv = async (rol, tabla, p) =>
   (await db.query(`select has_table_privilege($1,$2,$3) v`, [rol, tabla, p])).rows[0].v;
@@ -39,6 +42,12 @@ ok(await priv("service_role", "public.usuarios_autorizados", "select"), "service
 ok(!(await priv("authenticated", "public.usuarios_autorizados", "select")), "authenticated NO lee usuarios_autorizados");
 ok(!(await priv("anon", "public.usuarios_autorizados", "select")), "anon NO lee usuarios_autorizados");
 ok(!(await priv("service_role", "public.usuarios_autorizados", "insert")), "service_role NO puede escribirla");
+
+console.log("\n=== historial de cargas ===");
+ok(await priv("authenticated", "public.cargas", "select"), "authenticated SÍ lee cargas (lo muestra /cargas)");
+ok(!(await priv("authenticated", "public.cargas", "insert")), "authenticated NO puede escribir cargas");
+ok(await priv("service_role", "public.cargas", "insert"), "service_role SÍ puede registrarlas");
+ok(!(await priv("anon", "public.cargas", "select")), "anon NO lee cargas");
 
 console.log("\n=== anon sigue sin acceso a los datos ===");
 for (const t of ["productos", "ordenes"]) ok(!(await priv("anon", `public.${t}`, "select")), `anon NO lee ${t}`);

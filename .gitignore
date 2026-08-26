@@ -45,3 +45,6 @@ next-env.d.ts
 # contexto del proyecto (info sensible, no sube al repo)
 CONTEXTO_PROYECTO_DIEGO.md
 PLAN_SPRINTS_FULLEGACY.md
+
+# estado temporal del CLI de supabase (supabase link)
+supabase/.temp/

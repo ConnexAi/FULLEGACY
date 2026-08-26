@@ -45,7 +45,11 @@ export async function ingerirArchivo(
       };
     }
 
-    const carga = agruparCarga(filas);
+    const carga = agruparCarga(filas, {
+      nombre: nombre,
+      filas_leidas: filasLeidas,
+      filas_con_error: errores.length,
+    });
 
     const supabase = crearClienteAdmin();
     const { data, error } = await supabase.rpc("procesar_carga", {
@@ -77,6 +81,7 @@ export async function ingerirArchivo(
     return {
       archivo: nombre,
       ok: true,
+      cargaId: Number(resumen.carga_id),
       filasLeidas,
       filasConError: errores.length,
       erroresMuestra: errores.slice(0, MAX_ERRORES_MOSTRADOS),

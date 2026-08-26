@@ -20,8 +20,11 @@ export type ColumnaDropi =
   | "CANTIDAD";
 
 /**
- * Sin estas cuatro no se puede construir ni una sola fila útil, así que el
- * archivo se rechaza completo antes de procesar nada.
+ * Sin estas cuatro columnas el archivo no es un export de Dropi, así que se
+ * rechaza completo antes de procesar nada.
+ *
+ * Ojo: se exige que el ENCABEZADO exista, no que todas las celdas tengan valor.
+ * VARIACION ID viene vacío en los productos sin variantes, y eso es válido.
  */
 export const COLUMNAS_CRITICAS: ColumnaDropi[] = [
   "ID",
