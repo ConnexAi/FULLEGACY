@@ -9,9 +9,10 @@
     "lint": "eslint",
     "test:sql": "node pruebas/sql.test.mjs",
     "test:ingesta": "tsx --conditions=react-server pruebas/e2e.test.mts",
-    "test": "npm run test:sql && npm run test:privilegios && npm run test:ingesta && npm run test:autorizacion",
+    "test": "npm run test:sql && npm run test:privilegios && npm run test:ingesta && npm run test:autorizacion && npm run test:reporte",
     "test:privilegios": "node pruebas/privilegios.test.mjs",
-    "test:autorizacion": "tsx --conditions=react-server pruebas/autorizacion.test.mts"
+    "test:autorizacion": "tsx --conditions=react-server pruebas/autorizacion.test.mts",
+    "test:reporte": "tsx --conditions=react-server pruebas/reporte-ordenado.test.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

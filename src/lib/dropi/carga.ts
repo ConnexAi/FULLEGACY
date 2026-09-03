@@ -55,6 +55,8 @@ export function agruparCarga(
         fecha_orden: fila.fechaOrden.toISOString(),
         fecha_guia_generada: fila.fechaGuiaGenerada?.toISOString() ?? null,
         numero_guia: fila.numeroGuia,
+        transportadora: fila.transportadora,
+        ciudad_destino: fila.ciudadDestino,
         lineas: [],
       };
       ordenes.set(fila.idOrden, orden);
@@ -63,6 +65,8 @@ export function agruparCarga(
       // si alguna llega incompleta se completa con la que sí los traiga.
       orden.fecha_guia_generada ??= fila.fechaGuiaGenerada?.toISOString() ?? null;
       orden.numero_guia ??= fila.numeroGuia;
+      orden.transportadora ??= fila.transportadora;
+      orden.ciudad_destino ??= fila.ciudadDestino;
     }
 
     // La suma por (orden, producto, variación) la resuelve `procesar_carga`
@@ -71,6 +75,9 @@ export function agruparCarga(
       producto_id: fila.productoId,
       variacion_id: fila.variacionId,
       cantidad: fila.cantidad,
+      // Posición en el archivo: el Reporte Ordenado ancla el combo al producto
+      // de línea más baja.
+      linea: orden.lineas.length + 1,
     });
   }
 

@@ -138,6 +138,8 @@ function construirFila(
       leerCrudo(fila, mapa, "FECHA_GUIA_GENERADA"),
     ),
     numeroGuia: leerTexto(fila, mapa, "NUMERO_GUIA"),
+    transportadora: leerTexto(fila, mapa, "TRANSPORTADORA"),
+    ciudadDestino: leerTexto(fila, mapa, "CIUDAD_DESTINO"),
     productoId,
     // Dropi siempre manda el nombre; el respaldo evita perder la orden entera
     // por un campo que solo se usa para mostrar.

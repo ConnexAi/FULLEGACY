@@ -32,8 +32,8 @@ function check(nombre: string, real: unknown, esperado: unknown) {
 /** Las 54 columnas del export. Las relevantes van intercaladas, como en el real. */
 const COLUMNAS_54 = [
   "ID", "ESTATUS", "FECHA", "TIPO DE ENVIO", "TRANSPORTADORA", "NÚMERO GUIA",
-  "FECHA GUIA GENERADA", "CLIENTE", "TELEFONO", "DIRECCION", "CIUDAD",
-  "DEPARTAMENTO", "PAIS", "NOTAS", "PRODUCTO ID", "SKU", "VARIACION ID",
+  "FECHA GUIA GENERADA", "CLIENTE", "TELEFONO", "DIRECCION", "CIUDAD DESTINO",
+  "DEPARTAMENTO DESTINO", "PAIS", "NOTAS", "PRODUCTO ID", "SKU", "VARIACION ID",
   "PRODUCTO", "VARIACION", "CANTIDAD", "PRECIO", "COSTO", "FLETE",
   ...Array.from({ length: 31 }, (_, i) => `COLUMNA EXTRA ${i + 1}`),
 ];
@@ -41,6 +41,7 @@ const COLUMNAS_54 = [
 interface FilaCruda {
   ID?: unknown; ESTATUS?: unknown; FECHA?: unknown;
   "NÚMERO GUIA"?: unknown; "FECHA GUIA GENERADA"?: unknown;
+  TRANSPORTADORA?: unknown; "CIUDAD DESTINO"?: unknown;
   "PRODUCTO ID"?: unknown; SKU?: unknown; "VARIACION ID"?: unknown;
   PRODUCTO?: unknown; VARIACION?: unknown; CANTIDAD?: unknown;
 }
@@ -82,6 +83,8 @@ for (const m of [
   "20260826170100_historial_cargas.sql",
   "20260826170200_procesar_carga_v2.sql",
   "20260826190000_procesar_carga_contrato.sql",
+  "20260827100000_reporte_ordenado_datos.sql",
+  "20260827100100_procesar_carga_v3.sql",
 ]) {
   await db.exec(readFileSync(`${RAIZ}supabase/migrations/${m}`, "utf8"));
 }
@@ -161,6 +164,7 @@ const archivo1 = await construirXlsx([
   // Orden simple, Hydra 1 unidad
   { ID: 1001, ESTATUS: "ENTREGADO", FECHA: "03/04/2026 10:30:00",
     "NÚMERO GUIA": "240000001", "FECHA GUIA GENERADA": "04/04/2026 09:00:00",
+    TRANSPORTADORA: "ENVIA", "CIUDAD DESTINO": "BOGOTA",
     "PRODUCTO ID": 2105813, SKU: "463830-0", "VARIACION ID": 2109232,
     PRODUCTO: "Hydra", VARIACION: "1 unidad", CANTIDAD: 1 },
 
@@ -230,8 +234,9 @@ check("error 2: CANTIDAD inválida", p1.errores[1].motivo.includes("CANTIDAD deb
 check("error 2 atribuido al combo 1006", p1.errores[1].idOrden, 1006);
 check("ignora las 43 columnas irrelevantes",
   Object.keys(p1.filas[0]).sort(),
-  ["cantidad","estado","fechaGuiaGenerada","fechaOrden","fila","idOrden","numeroGuia",
-   "productoId","productoNombre","sku","textoVariacion","variacionId"]);
+  ["cantidad","ciudadDestino","estado","fechaGuiaGenerada","fechaOrden","fila","idOrden",
+   "numeroGuia","productoId","productoNombre","sku","textoVariacion","transportadora",
+   "variacionId"]);
 
 const carga1 = agruparCarga(p1.filas, {
   nombre: "archivo1.xlsx",
@@ -241,8 +246,8 @@ const carga1 = agruparCarga(p1.filas, {
 check("órdenes agrupadas", carga1.ordenes.map((o) => o.id_orden), [1001, 1003, 1004, 1006, 1007, 1008, 1009]);
 check("el combo 1003 tiene 2 líneas",
   carga1.ordenes.find((o) => o.id_orden === 1003)!.lineas,
-  [{ producto_id: 2105813, variacion_id: 2109232, cantidad: 2 },
-   { producto_id: 2174950, variacion_id: 2235745, cantidad: 1 }]);
+  [{ producto_id: 2105813, variacion_id: 2109232, cantidad: 2, linea: 1 },
+   { producto_id: 2174950, variacion_id: 2235745, cantidad: 1, linea: 2 }]);
 check("la orden 1006 quedó con 1 sola línea (perdió la errónea)",
   carga1.ordenes.find((o) => o.id_orden === 1006)!.lineas.length, 1);
 check("catálogo: 4 productos", carga1.productos.map((p) => p.id).sort(), [2103415, 2105813, 2174950, 3001]);
@@ -270,7 +275,7 @@ const sinVar = carga1.ordenes.find((o) => o.id_orden === 1008)!;
 check("la fila sin VARIACION ID NO se descartó",
   p1.errores.some((e) => e.idOrden === 1008), false);
 check("la línea apunta al producto con variacion_id null",
-  sinVar.lineas, [{ producto_id: 2103415, variacion_id: null, cantidad: 2 }]);
+  sinVar.lineas, [{ producto_id: 2103415, variacion_id: null, cantidad: 2, linea: 1 }]);
 check("no se creó ninguna variación para ese producto",
   carga1.variaciones.some((v) => v.producto_id === 2103415), false);
 check("el SKU quedó en el producto",
@@ -279,8 +284,8 @@ check("un producto CON variantes no se lleva el SKU al producto",
   carga1.productos.find((p) => p.id === 2105813)!.sku, null);
 check("el combo mixto conserva sus dos líneas",
   carga1.ordenes.find((o) => o.id_orden === 1009)!.lineas,
-  [{ producto_id: 2105813, variacion_id: 2109232, cantidad: 1 },
-   { producto_id: 2103415, variacion_id: null, cantidad: 3 }]);
+  [{ producto_id: 2105813, variacion_id: 2109232, cantidad: 1, linea: 1 },
+   { producto_id: 2103415, variacion_id: null, cantidad: 3, linea: 2 }]);
 
 check("variación 'p01' → unidades null",
   carga1.variaciones.find((v) => v.id === 3101)!.unidades_extraidas, null);
@@ -299,6 +304,12 @@ check("BD: el combo 1003 quedó en 2 filas",
   Number((await db.query<{c:number}>("select count(*)::int c from orden_productos where orden_id=1003")).rows[0].c), 2);
 check("BD: la variación repetida se sumó (2+3=5)",
   (await db.query<{cantidad:number}>("select cantidad from orden_productos where orden_id=1007")).rows[0].cantidad, 5);
+check("BD: transportadora guardada",
+  (await db.query<{t:string}>("select transportadora t from ordenes where id_orden=1001")).rows[0].t, "ENVIA");
+check("BD: ciudad_destino guardada",
+  (await db.query<{c:string}>("select ciudad_destino c from ordenes where id_orden=1001")).rows[0].c, "BOGOTA");
+check("BD: la posición de línea del combo se conservó",
+  (await db.query<{l:number}>("select linea l from orden_productos where orden_id=1003 order by linea")).rows.map(r=>Number(r.l)), [1, 2]);
 check("BD: numero_guia guardado",
   (await db.query<{numero_guia:string}>("select numero_guia from ordenes where id_orden=1001")).rows[0].numero_guia, "240000001");
 check("BD: fecha_guia_generada null cuando no viene",

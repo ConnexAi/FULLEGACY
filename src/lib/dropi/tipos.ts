@@ -9,6 +9,8 @@ export interface FilaDropi {
   fechaOrden: Date;
   fechaGuiaGenerada: Date | null;
   numeroGuia: string | null;
+  transportadora: string | null;
+  ciudadDestino: string | null;
   productoId: number;
   productoNombre: string;
   sku: string | null;
@@ -76,10 +78,14 @@ export interface CargaParaGuardar {
     fecha_orden: string;
     fecha_guia_generada: string | null;
     numero_guia: string | null;
+    transportadora: string | null;
+    ciudad_destino: string | null;
     lineas: {
       producto_id: number;
       variacion_id: number | null;
       cantidad: number;
+      /** Posición dentro de la orden, en el orden del archivo (1-based). */
+      linea: number;
     }[];
   }[];
 }

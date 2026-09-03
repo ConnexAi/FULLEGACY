@@ -117,6 +117,8 @@ export interface Database {
           fecha_orden: string;
           fecha_guia_generada: string | null;
           numero_guia: string | null;
+          transportadora: string | null;
+          ciudad_destino: string | null;
           carga_id: number;
           creado_en: string;
         };
@@ -126,6 +128,8 @@ export interface Database {
           fecha_orden: string;
           fecha_guia_generada?: string | null;
           numero_guia?: string | null;
+          transportadora?: string | null;
+          ciudad_destino?: string | null;
           carga_id: number;
           creado_en?: string;
         };
@@ -135,6 +139,8 @@ export interface Database {
           fecha_orden?: string;
           fecha_guia_generada?: string | null;
           numero_guia?: string | null;
+          transportadora?: string | null;
+          ciudad_destino?: string | null;
           carga_id?: number;
           creado_en?: string;
         };
@@ -155,6 +161,7 @@ export interface Database {
           /** NULL cuando el producto no maneja variantes. */
           variacion_id: number | null;
           cantidad: number;
+          linea: number;
           creado_en: string;
         };
         Insert: {
@@ -163,6 +170,7 @@ export interface Database {
           producto_id: number;
           variacion_id?: number | null;
           cantidad: number;
+          linea?: number;
           creado_en?: string;
         };
         Update: {
@@ -171,6 +179,7 @@ export interface Database {
           producto_id?: number;
           variacion_id?: number | null;
           cantidad?: number;
+          linea?: number;
           creado_en?: string;
         };
         Relationships: [
@@ -213,7 +222,30 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: Record<never, never>;
+    Views: {
+      /** Orden + línea + producto + variación, aplanado. Base de los reportes. */
+      v_lineas_carga: {
+        Row: {
+          carga_id: number;
+          id_orden: number;
+          estado: string;
+          estado_normalizado: string;
+          numero_guia: string | null;
+          transportadora: string | null;
+          ciudad_destino: string | null;
+          fecha_orden: string;
+          fecha_guia_generada: string | null;
+          linea: number;
+          producto_id: number;
+          producto_nombre: string;
+          variacion_id: number | null;
+          texto_variacion: string | null;
+          unidades_extraidas: number | null;
+          cantidad: number;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       /** Ingesta transaccional de una carga completa. Ver supabase/migrations/20260826090100_procesar_carga.sql */
       procesar_carga: {

@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  ConteoPorProducto,
+  TablaReporte,
+} from "@/app/cargas/[id]/tabla-reporte";
+import {
+  construirReporteOrdenado,
+  type LineaCarga,
+} from "@/lib/reportes/reporte-ordenado";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -12,11 +20,11 @@ const FORMATO_FECHA = new Intl.DateTimeFormat("es-CO", {
 });
 
 /**
- * Detalle de una carga.
+ * Reporte Ordenado de una carga.
  *
- * Por ahora solo muestra el resumen guardado. El Reporte Ordenado de esta
- * carga se construye en el Sprint 2: es justamente para eso que `ordenes`
- * quedó ligada a `cargas`.
+ * Solo entran las órdenes por despachar (estado que empieza por "PENDIENTE").
+ * El filtro por prefijo se hace en SQL sobre `estado_normalizado`, que la
+ * vista ya deja en mayúsculas y sin espacios sobrantes.
  */
 export default async function PaginaCarga({
   params,
@@ -29,26 +37,25 @@ export default async function PaginaCarga({
   if (!Number.isInteger(cargaId) || cargaId <= 0) notFound();
 
   const supabase = await crearClienteServidor();
-  const { data: carga, error } = await supabase
-    .from("cargas")
-    .select("*")
-    .eq("id", cargaId)
-    .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  const [{ data: carga, error: errorCarga }, { data: lineas, error: errorLineas }] =
+    await Promise.all([
+      supabase.from("cargas").select("*").eq("id", cargaId).maybeSingle(),
+      supabase
+        .from("v_lineas_carga")
+        .select("*")
+        .eq("carga_id", cargaId)
+        .like("estado_normalizado", "PENDIENTE%"),
+    ]);
+
+  if (errorCarga) throw new Error(errorCarga.message);
   if (!carga) notFound();
+  if (errorLineas) throw new Error(errorLineas.message);
 
-  const datos: [string, number][] = [
-    ["Órdenes nuevas", carga.ordenes_nuevas],
-    ["Omitidas (duplicadas)", carga.ordenes_omitidas],
-    ["Filas leídas", carga.filas_leidas],
-    ["Filas con error", carga.filas_con_error],
-    ["Productos nuevos", carga.productos_nuevos],
-    ["Variaciones nuevas", carga.variaciones_nuevas],
-  ];
+  const reporte = construirReporteOrdenado((lineas ?? []) as LineaCarga[]);
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-6 py-12">
       <header className="flex flex-col gap-1">
         <Link
           href="/cargas"
@@ -60,24 +67,30 @@ export default async function PaginaCarga({
           {carga.nombre_archivo}
         </h1>
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          {FORMATO_FECHA.format(new Date(carga.creado_en))}
+          {FORMATO_FECHA.format(new Date(carga.creado_en))} ·{" "}
+          {carga.ordenes_nuevas} órdenes nuevas · {carga.ordenes_omitidas}{" "}
+          omitidas
         </p>
       </header>
 
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-        {datos.map(([etiqueta, valor]) => (
-          <div key={etiqueta}>
-            <dt className="text-xs text-neutral-500 dark:text-neutral-400">
-              {etiqueta}
-            </dt>
-            <dd className="text-lg font-semibold tabular-nums">{valor}</dd>
-          </div>
-        ))}
-      </dl>
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold">Reporte Ordenado</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+            {reporte.totalPedidos} pedidos por despachar ·{" "}
+            {reporte.totalUnidades} unidades · agrupado por producto A→Z y
+            cantidad ascendente
+          </p>
+        </div>
+        <TablaReporte reporte={reporte} />
+      </section>
 
-      <p className="rounded-lg border border-black/10 px-4 py-3 text-sm text-neutral-600 dark:border-white/15 dark:text-neutral-300">
-        El Reporte Ordenado de esta carga se construye en el Sprint 2.
-      </p>
+      {reporte.conteoPorProducto.length > 0 ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Conteo por producto</h2>
+          <ConteoPorProducto reporte={reporte} />
+        </section>
+      ) : null}
     </main>
   );
 }

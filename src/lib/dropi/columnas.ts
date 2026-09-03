@@ -17,7 +17,9 @@ export type ColumnaDropi =
   | "VARIACION_ID"
   | "PRODUCTO"
   | "VARIACION"
-  | "CANTIDAD";
+  | "CANTIDAD"
+  | "TRANSPORTADORA"
+  | "CIUDAD_DESTINO";
 
 /**
  * Sin estas cuatro columnas el archivo no es un export de Dropi, así que se
@@ -54,6 +56,9 @@ const ENCABEZADOS: Record<ColumnaDropi, string[]> = {
   PRODUCTO: ["PRODUCTO", "NOMBRE PRODUCTO"],
   VARIACION: ["VARIACION"],
   CANTIDAD: ["CANTIDAD", "CANT"],
+  TRANSPORTADORA: ["TRANSPORTADORA", "TRANSPORTADOR"],
+  // Ojo: el export trae también "DEPARTAMENTO DESTINO"; no debe confundirse.
+  CIUDAD_DESTINO: ["CIUDAD DESTINO", "CIUDAD DE DESTINO", "CIUDAD"],
 };
 
 /** Nombre legible de cada columna, para los mensajes de error. */
@@ -69,6 +74,8 @@ export const ETIQUETAS: Record<ColumnaDropi, string> = {
   PRODUCTO: "PRODUCTO",
   VARIACION: "VARIACION",
   CANTIDAD: "CANTIDAD",
+  TRANSPORTADORA: "TRANSPORTADORA",
+  CIUDAD_DESTINO: "CIUDAD DESTINO",
 };
 
 /**
