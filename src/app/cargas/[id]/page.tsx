@@ -5,11 +5,7 @@ import {
   ConteoPorProducto,
   TablaReporte,
 } from "@/app/cargas/[id]/tabla-reporte";
-import {
-  construirReporteOrdenado,
-  type LineaCarga,
-} from "@/lib/reportes/reporte-ordenado";
-import { crearClienteServidor } from "@/lib/supabase/server";
+import { obtenerCargaConReporte } from "@/lib/reportes/consulta-carga";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +19,8 @@ const FORMATO_FECHA = new Intl.DateTimeFormat("es-CO", {
  * Reporte Ordenado de una carga.
  *
  * Solo entran las órdenes por despachar (estado que empieza por "PENDIENTE").
- * El filtro por prefijo se hace en SQL sobre `estado_normalizado`, que la
- * vista ya deja en mayúsculas y sin espacios sobrantes.
+ * La descarga en Excel sale de la misma consulta, así que el orden en pantalla
+ * y el del archivo son idénticos.
  */
 export default async function PaginaCarga({
   params,
@@ -36,23 +32,10 @@ export default async function PaginaCarga({
 
   if (!Number.isInteger(cargaId) || cargaId <= 0) notFound();
 
-  const supabase = await crearClienteServidor();
+  const datos = await obtenerCargaConReporte(cargaId);
+  if (!datos) notFound();
 
-  const [{ data: carga, error: errorCarga }, { data: lineas, error: errorLineas }] =
-    await Promise.all([
-      supabase.from("cargas").select("*").eq("id", cargaId).maybeSingle(),
-      supabase
-        .from("v_lineas_carga")
-        .select("*")
-        .eq("carga_id", cargaId)
-        .like("estado_normalizado", "PENDIENTE%"),
-    ]);
-
-  if (errorCarga) throw new Error(errorCarga.message);
-  if (!carga) notFound();
-  if (errorLineas) throw new Error(errorLineas.message);
-
-  const reporte = construirReporteOrdenado((lineas ?? []) as LineaCarga[]);
+  const { carga, reporte } = datos;
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-6 py-12">
@@ -74,14 +57,27 @@ export default async function PaginaCarga({
       </header>
 
       <section className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold">Reporte Ordenado</h2>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            {reporte.totalPedidos} pedidos por despachar ·{" "}
-            {reporte.totalUnidades} unidades · agrupado por producto A→Z y
-            cantidad ascendente
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold">Reporte Ordenado</h2>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              {reporte.totalPedidos} pedidos por despachar ·{" "}
+              {reporte.totalUnidades} unidades · agrupado por producto A→Z y
+              cantidad ascendente
+            </p>
+          </div>
+
+          {reporte.filas.length > 0 ? (
+            <a
+              href={`/api/cargas/${cargaId}/excel`}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#3B6EA5] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#325d8c]"
+            >
+              <IconoDescarga />
+              Descargar Excel
+            </a>
+          ) : null}
         </div>
+
         <TablaReporte reporte={reporte} />
       </section>
 
@@ -92,5 +88,24 @@ export default async function PaginaCarga({
         </section>
       ) : null}
     </main>
+  );
+}
+
+function IconoDescarga() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 2v8m0 0L5 7m3 3 3-3" />
+      <path d="M2.5 11v1.5A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5V11" />
+    </svg>
   );
 }
