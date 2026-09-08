@@ -85,6 +85,7 @@ for (const m of [
   "20260826190000_procesar_carga_contrato.sql",
   "20260827100000_reporte_ordenado_datos.sql",
   "20260827100100_procesar_carga_v3.sql",
+  "20260908100000_historial_mensual.sql",
 ]) {
   await db.exec(readFileSync(`${RAIZ}supabase/migrations/${m}`, "utf8"));
 }

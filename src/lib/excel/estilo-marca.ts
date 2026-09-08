@@ -19,6 +19,8 @@ export const MARCA = {
   crema: "FFFDF6E3",
   /** Banda alterna: apenas más oscura que el blanco, para separar grupos. */
   bandaAlterna: "FFF7F3EA",
+  /** Resaltado tenue derivado del azul de marca, para marcar filas puntuales. */
+  resaltadoSuave: "FFEDF2F8",
   blanco: "FFFFFFFF",
   texto: "FF1F2937",
   textoSuave: "FF6B7280",
@@ -146,6 +148,8 @@ export interface ColumnaTabla<T> {
   alineacion?: Alineacion;
   /** Ancho mínimo en caracteres; el ajuste automático nunca baja de acá. */
   anchoMinimo?: number;
+  /** Comentario en la celda del encabezado (aclaraciones, advertencias). */
+  nota?: string;
 }
 
 export interface OpcionesTabla<T> {
@@ -157,6 +161,11 @@ export interface OpcionesTabla<T> {
    * así se distingue de un vistazo dónde empieza cada producto.
    */
   grupoDe?: (fila: T) => string;
+  /**
+   * Color de fondo propio de una fila (ARGB). Tiene prioridad sobre la banda
+   * alterna: sirve para destacar filas puntuales, como los jueves del mes.
+   */
+  fondoDeFila?: (fila: T) => string | null;
 }
 
 /**
@@ -167,7 +176,7 @@ export interface OpcionesTabla<T> {
  */
 export function escribirTabla<T>(
   hoja: ExcelJS.Worksheet,
-  { filaEncabezado, columnas, filas, grupoDe }: OpcionesTabla<T>,
+  { filaEncabezado, columnas, filas, grupoDe, fondoDeFila }: OpcionesTabla<T>,
 ): number {
   const encabezado = hoja.getRow(filaEncabezado);
   encabezado.height = 20;
@@ -180,8 +189,13 @@ export function escribirTabla<T>(
     celda.alignment = {
       horizontal: columna.alineacion ?? "left",
       vertical: "middle",
+      wrapText: true,
     };
     celda.border = { bottom: { style: "thin", color: { argb: MARCA.azul } } };
+
+    if (columna.nota) {
+      celda.note = columna.nota;
+    }
   });
 
   let grupoAnterior: string | null = null;
@@ -206,12 +220,11 @@ export function escribirTabla<T>(
       };
       celda.border = { bottom: { style: "hair", color: { argb: MARCA.borde } } };
 
-      if (bandaOscura) {
-        celda.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: MARCA.bandaAlterna },
-        };
+      const propio = fondoDeFila?.(fila) ?? null;
+      const fondo = propio ?? (bandaOscura ? MARCA.bandaAlterna : null);
+
+      if (fondo) {
+        celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fondo } };
       }
     });
   });
@@ -249,6 +262,23 @@ function ajustarAnchos<T>(
     // Solo ensancha: si otra tabla de la misma hoja ya pidió más, se respeta.
     columnaExcel.width = Math.max(columnaExcel.width ?? 0, calculado);
   });
+}
+
+/** Nota al pie: aclaraciones que Diego debe leer antes de usar el dato. */
+export function agregarNotaAlPie(
+  hoja: ExcelJS.Worksheet,
+  fila: number,
+  texto: string,
+  columnas: number,
+): number {
+  if (columnas > 1) hoja.mergeCells(fila, 1, fila, columnas);
+
+  const celda = hoja.getCell(fila, 1);
+  celda.value = texto;
+  celda.font = { name: "Calibri", size: 9, italic: true, color: { argb: MARCA.textoSuave } };
+  celda.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+
+  return fila + 1;
 }
 
 /** Título de sección dentro de una hoja (ej. el conteo bajo la tabla). */

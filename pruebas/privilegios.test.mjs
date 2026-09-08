@@ -15,6 +15,7 @@ const M = [
   "20260826190000_procesar_carga_contrato.sql",
   "20260827100000_reporte_ordenado_datos.sql",
   "20260827100100_procesar_carga_v3.sql",
+  "20260908100000_historial_mensual.sql",
 ];
 let fallos = 0;
 const ok = (c, t) => { if (!c) fallos++; console.log(`${c ? "  ok  " : "FALLA"} ${t}`); };
@@ -23,7 +24,7 @@ const db = await PGlite.create();
 await db.exec("create role anon; create role authenticated; create role service_role;");
 await db.exec("create schema auth; create table auth.users (id uuid primary key default gen_random_uuid(), email text);");
 for (const m of M) await db.exec(readFileSync(RAIZ + "supabase/migrations/" + m, "utf8"));
-console.log("las 11 migraciones aplicaron\n");
+console.log("las 12 migraciones aplicaron\n");
 
 const priv = async (rol, tabla, p) =>
   (await db.query(`select has_table_privilege($1,$2,$3) v`, [rol, tabla, p])).rows[0].v;

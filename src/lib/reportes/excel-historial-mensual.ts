@@ -1,0 +1,150 @@
+import "server-only";
+
+import type ExcelJS from "exceljs";
+
+import {
+  MARCA,
+  agregarEncabezado,
+  agregarNotaAlPie,
+  crearLibro,
+  escribirTabla,
+  type ColumnaTabla,
+} from "@/lib/excel/estilo-marca";
+import {
+  AVISO_PRELIMINAR,
+  ESTADOS_NO_COMPLETADOS,
+  type FilaDia,
+  type HistorialMensual,
+  type HojaProducto,
+} from "@/lib/reportes/historial-mensual";
+
+/** Excel no acepta estos caracteres en el nombre de una hoja, ni más de 31. */
+const PROHIBIDOS_EN_HOJA = /[*?:\\/[\]]/g;
+const MAX_NOMBRE_HOJA = 31;
+
+const COLUMNAS: ColumnaTabla<FilaDia>[] = [
+  { titulo: "DÍA", valor: (f) => f.dia, alineacion: "center", anchoMinimo: 7 },
+  { titulo: "PEDIDOS", valor: (f) => f.pedidos, alineacion: "right", anchoMinimo: 10 },
+  { titulo: "UNIDADES", valor: (f) => f.unidades, alineacion: "right", anchoMinimo: 10 },
+  {
+    titulo: "DEVOLUCIONES EN BODEGA",
+    // Queda en blanco a propósito: la llena Diego a mano.
+    valor: () => null,
+    alineacion: "right",
+    anchoMinimo: 16,
+    nota: "Columna para llenar a mano. El sistema no la calcula.",
+  },
+  {
+    titulo: "NO COMPLETADOS (PRELIMINAR)",
+    valor: (f) => f.noCompletados,
+    alineacion: "right",
+    anchoMinimo: 16,
+    nota: `${AVISO_PRELIMINAR}\n\nCuenta las órdenes despachadas cuyo estado quedó en: ${ESTADOS_NO_COMPLETADOS.join(", ")}.`,
+  },
+];
+
+/**
+ * Arma el historial mensual: un libro con una hoja por producto.
+ *
+ * Todas las hojas llevan el encabezado de marca del Sprint 2, así que el
+ * archivo se ve igual que el Reporte Ordenado.
+ */
+export async function generarExcelHistorialMensual(
+  historial: HistorialMensual,
+): Promise<ExcelJS.Buffer> {
+  const libro = crearLibro();
+  const usados = new Set<string>();
+
+  for (const hoja of historial.hojas) {
+    await escribirHojaProducto(libro, hoja, historial.etiquetaMes, usados);
+  }
+
+  return libro.xlsx.writeBuffer();
+}
+
+async function escribirHojaProducto(
+  libro: ExcelJS.Workbook,
+  datos: HojaProducto,
+  etiquetaMes: string,
+  usados: Set<string>,
+): Promise<void> {
+  const hoja = libro.addWorksheet(nombreDeHoja(datos.producto.nombre, usados));
+
+  const filaTabla = await agregarEncabezado(libro, hoja, {
+    titulo: datos.producto.nombre,
+    subtitulo: `Historial mensual · ${etiquetaMes}`,
+    columnas: COLUMNAS.length,
+  });
+
+  escribirTabla(hoja, {
+    filaEncabezado: filaTabla,
+    columnas: COLUMNAS,
+    filas: datos.filas,
+    // Los jueves Diego manda fotos a sus clientes: los quiere ubicar de un
+    // vistazo. Reemplaza la banda alterna, que acá no aporta (no hay grupos).
+    fondoDeFila: (fila) => (fila.esJueves ? MARCA.resaltadoSuave : null),
+  });
+
+  const filaTotales = filaTabla + datos.filas.length + 1;
+  escribirTotales(hoja, filaTotales, datos);
+
+  agregarNotaAlPie(
+    hoja,
+    filaTotales + 2,
+    `Fondo azul tenue = jueves.  ·  "No completados": ${AVISO_PRELIMINAR}`,
+    COLUMNAS.length,
+  );
+}
+
+function escribirTotales(
+  hoja: ExcelJS.Worksheet,
+  fila: number,
+  datos: HojaProducto,
+): void {
+  const valores = [
+    "TOTAL",
+    datos.totalPedidos,
+    datos.totalUnidades,
+    null,
+    datos.totalNoCompletados,
+  ];
+
+  valores.forEach((valor, i) => {
+    const celda = hoja.getCell(fila, i + 1);
+    celda.value = valor;
+    celda.font = { name: "Calibri", size: 10, bold: true, color: { argb: MARCA.azul } };
+    celda.alignment = {
+      horizontal: i === 0 ? "center" : "right",
+      vertical: "middle",
+    };
+    celda.border = { top: { style: "thin", color: { argb: MARCA.azul } } };
+  });
+}
+
+/**
+ * Nombre de hoja válido para Excel: sin caracteres prohibidos, máximo 31
+ * caracteres y único dentro del libro.
+ *
+ * Hace falta de verdad: "KIT ALIVIO GARGANTA GUT Y ESPIRULINA" son 36.
+ */
+export function nombreDeHoja(nombreProducto: string, usados: Set<string>): string {
+  const limpio =
+    nombreProducto.replace(PROHIBIDOS_EN_HOJA, " ").replace(/\s+/g, " ").trim() ||
+    "Producto";
+
+  let candidato = limpio.slice(0, MAX_NOMBRE_HOJA);
+
+  // Si dos productos comparten los primeros 31 caracteres, se numeran.
+  for (let n = 2; usados.has(candidato.toLowerCase()); n += 1) {
+    const sufijo = ` (${n})`;
+    candidato = `${limpio.slice(0, MAX_NOMBRE_HOJA - sufijo.length)}${sufijo}`;
+  }
+
+  usados.add(candidato.toLowerCase());
+  return candidato;
+}
+
+/** historial-2026-09.xlsx */
+export function nombreArchivoHistorial(anio: number, mes: number): string {
+  return `historial-${anio}-${String(mes).padStart(2, "0")}.xlsx`;
+}

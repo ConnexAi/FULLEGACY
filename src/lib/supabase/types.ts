@@ -252,6 +252,21 @@ export interface Database {
         Args: { p_carga: Json };
         Returns: Json;
       };
+      /** Agregación del historial mensual. Ver supabase/migrations/20260908100000_historial_mensual.sql */
+      historial_mensual: {
+        Args: {
+          p_anio: number;
+          p_mes: number;
+          p_estados_no_completados: string[];
+        };
+        Returns: {
+          producto_id: number;
+          dia: number;
+          pedidos: number;
+          unidades: number;
+          no_completados: number;
+        }[];
+      };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

@@ -5,10 +5,11 @@ const nextConfig: NextConfig = {
   // bundle del servidor para que se cargue en tiempo de ejecución tal cual.
   serverExternalPackages: ["exceljs"],
 
-  // El endpoint del Excel lee el logo del disco. En Vercel, `public/` no entra
-  // solo al bundle de una función serverless: hay que declararlo.
+  // Los endpoints de Excel leen el logo del disco. En Vercel, `public/` no
+  // entra solo al bundle de una función serverless: hay que declararlo.
   outputFileTracingIncludes: {
     "/api/cargas/*/excel": ["public/logo-fullegacy-marca.png"],
+    "/api/historial/*/*/excel": ["public/logo-fullegacy-marca.png"],
   },
 };
 

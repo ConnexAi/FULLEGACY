@@ -24,3 +24,54 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* ---------------------------------------------------------------------------
+   Colores de los gráficos del dashboard.
+
+   Validados con el verificador de la guía de visualización (banda de
+   luminosidad, croma, separación para daltonismo y contraste), en modo claro y
+   oscuro por separado. El modo oscuro no es un volteo: son pasos propios.
+
+   Ver src/lib/reportes/paleta-graficos.ts para el detalle de cada set.
+   --------------------------------------------------------------------------- */
+.viz-root {
+  /* Barras: 2 series. Azul y dorado de FULLEGACY. */
+  --viz-serie-1: #3b6ea5;
+  --viz-serie-2: #c9a227;
+
+  /* Torta: hasta 5 productos + "Otros" en gris de atenuación. */
+  --viz-sector-1: #2a78d6;
+  --viz-sector-2: #eb6834;
+  --viz-sector-3: #1baf7a;
+  --viz-sector-4: #eda100;
+  --viz-sector-5: #e87ba4;
+  --viz-otros: #9ca3af;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    /* El dorado de marca queda fuera de la banda de luminosidad sobre fondo
+       oscuro (L 0.728 contra un techo de 0.67): se usa su paso oscuro. */
+    --viz-serie-1: #3987e5;
+    --viz-serie-2: #c98500;
+
+    --viz-sector-1: #3987e5;
+    --viz-sector-2: #d95926;
+    --viz-sector-3: #199e70;
+    --viz-sector-4: #c98500;
+    --viz-sector-5: #d55181;
+    --viz-otros: #6b7280;
+  }
+}
+
+:root[data-theme="dark"] .viz-root {
+  --viz-serie-1: #3987e5;
+  --viz-serie-2: #c98500;
+
+  --viz-sector-1: #3987e5;
+  --viz-sector-2: #d95926;
+  --viz-sector-3: #199e70;
+  --viz-sector-4: #c98500;
+  --viz-sector-5: #d55181;
+  --viz-otros: #6b7280;
+}

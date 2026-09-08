@@ -33,11 +33,23 @@ export default async function Inicio() {
         >
           Cargar archivo de Dropi →
         </Link>
+        <Link
+          href="/historial"
+          className="rounded-lg border border-black/10 px-4 py-3 text-sm font-medium transition hover:bg-neutral-100 dark:border-white/15 dark:hover:bg-neutral-800"
+        >
+          Historial mensual →
+        </Link>
+        <Link
+          href="/dashboard"
+          className="rounded-lg border border-black/10 px-4 py-3 text-sm font-medium transition hover:bg-neutral-100 dark:border-white/15 dark:hover:bg-neutral-800"
+        >
+          Dashboard →
+        </Link>
       </nav>
 
       <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
-        El Reporte Ordenado, el historial mensual y el dashboard se construyen
-        en los siguientes sprints.
+        El sistema calcula todo contra la base en el momento: lo que subas
+        queda reflejado de inmediato en el historial y el dashboard.
       </p>
 
       <form action="/auth/sign-out" method="post">
