@@ -252,6 +252,11 @@ export interface Database {
         Args: { p_carga: Json };
         Returns: Json;
       };
+      /** Totales por día sin desglose por producto: los combos cuentan una vez. */
+      totales_diarios: {
+        Args: { p_anio: number; p_mes: number };
+        Returns: { dia: number; pedidos: number; unidades: number }[];
+      };
       /** Agregación del historial mensual. Ver supabase/migrations/20260908100000_historial_mensual.sql */
       historial_mensual: {
         Args: {

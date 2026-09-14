@@ -3,7 +3,10 @@ import { Suspense } from "react";
 
 import { BarrasPorProducto, TortaUnidades } from "@/app/dashboard/graficos";
 import { SelectorMes } from "@/components/selector-mes";
-import { obtenerTotalesDelMes } from "@/lib/reportes/consulta-historial";
+import {
+  obtenerResumenDelMes,
+  obtenerTotalesDelMes,
+} from "@/lib/reportes/consulta-historial";
 import { etiquetaDeMes } from "@/lib/reportes/historial-mensual";
 import { leerValorMes, mesActualEnBogota, ultimosMeses } from "@/lib/reportes/meses";
 
@@ -23,10 +26,20 @@ export default async function PaginaDashboard({
   const elegido = leerValorMes(mesEnUrl) ?? mesActualEnBogota();
   const valor = `${elegido.anio}-${String(elegido.mes).padStart(2, "0")}`;
 
-  const totales = await obtenerTotalesDelMes(elegido.anio, elegido.mes);
+  // El desglose por producto y los totales del mes salen de fuentes distintas
+  // a propósito: por producto, una orden-combo cuenta en cada producto que
+  // contiene (correcto); en el total del mes cuenta una sola vez.
+  const [totales, resumen] = await Promise.all([
+    obtenerTotalesDelMes(elegido.anio, elegido.mes),
+    obtenerResumenDelMes(elegido.anio, elegido.mes),
+  ]);
 
-  const pedidos = totales.reduce((n, t) => n + t.pedidos, 0);
-  const unidades = totales.reduce((n, t) => n + t.unidades, 0);
+  const pedidos = resumen.totalPedidos;
+  const unidades = resumen.totalUnidades;
+
+  // Si hay combos, la columna del desglose suma más que el total: se avisa.
+  const pedidosPorProducto = totales.reduce((n, t) => n + t.pedidos, 0);
+  const hayCombos = pedidosPorProducto !== pedidos;
 
   return (
     <main className="viz-root mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-12">
@@ -113,6 +126,14 @@ export default async function PaginaDashboard({
               </tfoot>
             </table>
           </div>
+
+          {hayCombos ? (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              El total cuenta cada orden una sola vez. Una orden con varios
+              productos aparece en la fila de cada uno, por eso la columna suma{" "}
+              {pedidosPorProducto}.
+            </p>
+          ) : null}
         </section>
       ) : null}
     </main>

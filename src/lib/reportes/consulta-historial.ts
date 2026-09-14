@@ -8,6 +8,7 @@ import {
   type HistorialMensual,
   type Producto,
   type ResumenDelMes,
+  type TotalDia,
 } from "@/lib/reportes/historial-mensual";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
@@ -70,11 +71,11 @@ export async function obtenerTotalesDelMes(
 }
 
 /**
- * Pedidos por día del mes, sumados sobre todos los productos.
+ * Pedidos y unidades por día del mes, agregados sobre todos los productos.
  *
- * Usa la misma agregación que el historial (`historial_mensual()`), pero sin
- * traer el catálogo ni armar las hojas: en la página de inicio es un vistazo,
- * no el reporte.
+ * Usa `totales_diarios()` y no `historial_mensual()`: esa cuenta por producto,
+ * y sumar sus filas contaría dos veces cada orden-combo. Acá cada orden cuenta
+ * una sola vez.
  */
 export async function obtenerResumenDelMes(
   anio: number,
@@ -83,13 +84,12 @@ export async function obtenerResumenDelMes(
 ): Promise<ResumenDelMes> {
   const supabase = await crearClienteServidor();
 
-  const { data, error } = await supabase.rpc("historial_mensual", {
+  const { data, error } = await supabase.rpc("totales_diarios", {
     p_anio: anio,
     p_mes: mes,
-    p_estados_no_completados: [...ESTADOS_NO_COMPLETADOS],
   });
 
   if (error) throw new Error(error.message);
 
-  return resumirPorDia(anio, mes, (data ?? []) as AgregadoDia[], hastaHoy);
+  return resumirPorDia(anio, mes, (data ?? []) as TotalDia[], hastaHoy);
 }

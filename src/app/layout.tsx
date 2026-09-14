@@ -26,9 +26,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <Navegacion />
+      {/* El relleno inferior deja aire para la pastilla flotante, que va fija
+          sobre el contenido. */}
+      <body className="flex min-h-full flex-col pb-24">
         {children}
+        <Navegacion />
       </body>
     </html>
   );

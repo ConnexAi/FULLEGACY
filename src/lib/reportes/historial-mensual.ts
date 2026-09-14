@@ -155,6 +155,13 @@ export function construirHistorialMensual(
   return { anio, mes, etiquetaMes: etiquetaDeMes(anio, mes), hojas };
 }
 
+/** Una fila de `totales_diarios()`: el día ya agregado, sin producto. */
+export interface TotalDia {
+  dia: number;
+  pedidos: number;
+  unidades: number;
+}
+
 /** Un día del mes con el total de pedidos y unidades de todos los productos. */
 export interface PedidosDelDia {
   dia: number;
@@ -174,10 +181,11 @@ export interface ResumenDelMes {
 }
 
 /**
- * Aplana la agregación por producto en una serie diaria del mes completo.
+ * Completa la serie diaria del mes a partir de los totales por día.
  *
- * Es lo que necesita el vistazo de la página de inicio: no interesa qué
- * producto fue, sino cuánto se despachó cada día.
+ * La entrada viene de `totales_diarios()`, que ya cuenta cada orden una sola
+ * vez aunque traiga varios productos. No se suman filas por producto acá:
+ * hacerlo era lo que inflaba los totales con cada combo.
  *
  * `hastaHoy` corta la serie: dibujar los días que todavía no llegaron los
  * mostraría en cero y parecería que el despacho se frenó.
@@ -185,18 +193,12 @@ export interface ResumenDelMes {
 export function resumirPorDia(
   anio: number,
   mes: number,
-  agregados: AgregadoDia[],
+  totales: TotalDia[],
   hastaHoy?: number,
 ): ResumenDelMes {
   const porDia = new Map<number, { pedidos: number; unidades: number }>();
-
-  for (const fila of agregados) {
-    const actual = porDia.get(fila.dia) ?? { pedidos: 0, unidades: 0 };
-    // Una orden con dos productos suma en los dos: acá se mide volumen de
-    // despacho, no órdenes únicas.
-    actual.pedidos += fila.pedidos;
-    actual.unidades += fila.unidades;
-    porDia.set(fila.dia, actual);
+  for (const fila of totales) {
+    porDia.set(fila.dia, { pedidos: fila.pedidos, unidades: fila.unidades });
   }
 
   const total = diasDelMes(anio, mes);

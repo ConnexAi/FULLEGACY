@@ -15,6 +15,7 @@ import {
   etiquetaDeMes,
   resumirPorDia,
   type AgregadoDia,
+  type TotalDia,
 } from "@/lib/reportes/historial-mensual";
 
 const RAIZ = new URL("..", import.meta.url).pathname;
@@ -31,6 +32,7 @@ const MIGRACIONES = [
   "20260827100000_reporte_ordenado_datos.sql",
   "20260827100100_procesar_carga_v3.sql",
   "20260908100000_historial_mensual.sql",
+  "20260914100000_totales_diarios.sql",
 ];
 
 let fallos = 0;
@@ -197,38 +199,81 @@ check("todo en cero, sin excepciones",
 check("febrero incompleto conserva sus 28 filas",
   construirHistorialMensual(2026, 2, productos, []).hojas[0].filas.length, 28);
 
-/* ── Serie diaria del vistazo de inicio ─────────────────────────────────── */
-console.log("\n── Vistazo de inicio: pedidos por día, todos los productos ──");
+/* ── Totales agregados: el combo cuenta UNA vez ─────────────────────────── */
+console.log("\n── Totales que cruzan productos ──");
 
-const serie = resumirPorDia(2026, 9, septiembre, 12);
+const totalesDiarios = (await db.query<TotalDia>(
+  "select * from public.totales_diarios($1, $2)", [2026, 9],
+)).rows.map((f) => ({
+  dia: Number(f.dia), pedidos: Number(f.pedidos), unidades: Number(f.unidades),
+}));
+
+// El día 10 tiene UNA orden (la 108) con dos productos.
+const porProductoDia10 = septiembre.filter((f) => f.dia === 10);
+check("por producto, el combo aparece en sus dos productos",
+  porProductoDia10.map((f) => f.producto_id).sort(), [1, 2]);
+check("y sumar esas filas daría 2 pedidos — el error que se corrigió",
+  porProductoDia10.reduce((n, f) => n + f.pedidos, 0), 2);
+check("el total diario lo cuenta UNA sola vez",
+  totalesDiarios.find((d) => d.dia === 10)?.pedidos, 1);
+check("pero sus unidades sí suman las dos líneas (1 + 2)",
+  totalesDiarios.find((d) => d.dia === 10)?.unidades, 3);
+
+console.log("\n── Días sin combo dan igual por las dos vías ──");
+for (const dia of [3, 5, 8]) {
+  check(`día ${dia}: mismo conteo`,
+    totalesDiarios.find((d) => d.dia === dia)?.pedidos,
+    septiembre.filter((f) => f.dia === dia).reduce((n, f) => n + f.pedidos, 0));
+}
+
+console.log("\n── Las hojas del Excel NO cambian ──");
+check("cada hoja sigue contando sus propias órdenes",
+  historial.hojas.find((h) => h.producto.id === 1)!.filas.find((f) => f.dia === 10)?.pedidos, 1);
+check("y el producto del combo también la registra",
+  septiembre.find((f) => f.producto_id === 2 && f.dia === 10)?.pedidos, 1);
+
+/* ── Serie diaria del vistazo de inicio ─────────────────────────────────── */
+console.log("\n── Vistazo de inicio: pedidos por día ──");
+
+const serie = resumirPorDia(2026, 9, totalesDiarios, 12);
 check("la serie se corta en el día indicado (hoy)", serie.dias.length, 12);
 check("y el último día es ese", serie.ultimoDia, 12);
-check("el día 3 suma los productos de ese día",
-  serie.dias.find((d) => d.dia === 3)?.pedidos, 2);
-// Ojo: en el vistazo, una orden-combo suma en cada producto que contiene, así
-// que el día 10 marca 2 aunque sea una sola orden. Es volumen de despacho, no
-// órdenes únicas; con 2 combos en 1618 órdenes reales la diferencia es mínima.
-check("el día 10 suma las dos líneas del combo (una orden, dos productos)",
-  [serie.dias.find((d) => d.dia === 10)?.pedidos,
-   serie.dias.find((d) => d.dia === 10)?.unidades], [2, 3]);
+check("el día 3 trae sus dos órdenes", serie.dias.find((d) => d.dia === 3)?.pedidos, 2);
+check("el día del combo marca 1 pedido, no 2",
+  serie.dias.find((d) => d.dia === 10)?.pedidos, 1);
 check("los días sin despachos quedan en cero, no ausentes",
   serie.dias.find((d) => d.dia === 2), { dia: 2, esJueves: false, pedidos: 0, unidades: 0 });
 check("los jueves quedan marcados también acá",
   serie.dias.filter((d) => d.esJueves).map((d) => d.dia), [3, 10]);
-// día 3 (2 ped / 3 uni) + día 5 (1/4) + día 8 (1/3) + día 10 (2/3)
-check("totales de la serie", [serie.totalPedidos, serie.totalUnidades], [6, 13]);
+// día 3 (2 ped / 3 uni) + día 5 (1/4) + día 8 (1/3) + día 10 (1/3)
+check("totales de la serie", [serie.totalPedidos, serie.totalUnidades], [5, 13]);
 
 console.log("\n── El corte por día de hoy ──");
 check("un mes recién empezado deja un solo punto",
-  resumirPorDia(2026, 9, septiembre, 1).dias.map((d) => d.dia), [1]);
+  resumirPorDia(2026, 9, totalesDiarios, 1).dias.map((d) => d.dia), [1]);
 check("sin corte, la serie llega al fin del mes",
-  resumirPorDia(2026, 9, septiembre).dias.length, 30);
+  resumirPorDia(2026, 9, totalesDiarios).dias.length, 30);
 check("un corte más allá del mes se limita al último día",
-  resumirPorDia(2026, 9, septiembre, 99).dias.length, 30);
+  resumirPorDia(2026, 9, totalesDiarios, 99).dias.length, 30);
 check("día 0 (caso límite) no rompe: serie vacía",
-  resumirPorDia(2026, 9, septiembre, 0).dias.length, 0);
+  resumirPorDia(2026, 9, totalesDiarios, 0).dias.length, 0);
 check("un mes sin datos da la serie completa en cero",
   resumirPorDia(2026, 12, [], 31).dias.every((d) => d.pedidos === 0 && d.unidades === 0), true);
+
+console.log("\n── El total del mes es la suma de los días ──");
+// Cada orden tiene una sola fecha de guía, así que pertenece a un único día:
+// sumar los conteos diarios no vuelve a contar nada.
+const septiembreCompleto = resumirPorDia(2026, 9, totalesDiarios);
+check("suma de días = órdenes únicas del mes",
+  septiembreCompleto.totalPedidos,
+  Number((await db.query<{c: number}>(`select count(distinct o.id_orden)::int c
+     from ordenes o where o.fecha_guia_generada is not null
+     and (o.fecha_guia_generada at time zone 'America/Bogota')::date
+         between '2026-09-01' and '2026-09-30'`)).rows[0].c));
+
+console.log("\n── Mes sin datos ──");
+const vacio = (await db.query<TotalDia>("select * from public.totales_diarios($1, $2)", [2026, 12])).rows;
+check("diciembre no devuelve filas", vacio.length, 0);
 
 console.log(`\n${fallos === 0 ? "HISTORIAL MENSUAL CORRECTO" : `${fallos} FALLOS`}`);
 process.exit(fallos ? 1 : 0);
