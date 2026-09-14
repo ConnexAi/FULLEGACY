@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { FormularioCarga } from "@/app/cargas/formulario-carga";
-import { ListaCargas } from "@/app/cargas/lista-cargas";
+import { ListaCargas } from "@/components/lista-cargas";
 
 export const metadata = {
   title: "Cargar archivo · FULLEGACY",

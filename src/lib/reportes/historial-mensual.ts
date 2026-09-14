@@ -154,3 +154,71 @@ export function construirHistorialMensual(
 
   return { anio, mes, etiquetaMes: etiquetaDeMes(anio, mes), hojas };
 }
+
+/** Un día del mes con el total de pedidos y unidades de todos los productos. */
+export interface PedidosDelDia {
+  dia: number;
+  esJueves: boolean;
+  pedidos: number;
+  unidades: number;
+}
+
+export interface ResumenDelMes {
+  anio: number;
+  mes: number;
+  dias: PedidosDelDia[];
+  totalPedidos: number;
+  totalUnidades: number;
+  /** Último día de la serie: hoy, si el mes está en curso. */
+  ultimoDia: number;
+}
+
+/**
+ * Aplana la agregación por producto en una serie diaria del mes completo.
+ *
+ * Es lo que necesita el vistazo de la página de inicio: no interesa qué
+ * producto fue, sino cuánto se despachó cada día.
+ *
+ * `hastaHoy` corta la serie: dibujar los días que todavía no llegaron los
+ * mostraría en cero y parecería que el despacho se frenó.
+ */
+export function resumirPorDia(
+  anio: number,
+  mes: number,
+  agregados: AgregadoDia[],
+  hastaHoy?: number,
+): ResumenDelMes {
+  const porDia = new Map<number, { pedidos: number; unidades: number }>();
+
+  for (const fila of agregados) {
+    const actual = porDia.get(fila.dia) ?? { pedidos: 0, unidades: 0 };
+    // Una orden con dos productos suma en los dos: acá se mide volumen de
+    // despacho, no órdenes únicas.
+    actual.pedidos += fila.pedidos;
+    actual.unidades += fila.unidades;
+    porDia.set(fila.dia, actual);
+  }
+
+  const total = diasDelMes(anio, mes);
+  const ultimoDia = Math.min(Math.max(hastaHoy ?? total, 0), total);
+
+  const dias: PedidosDelDia[] = [];
+  for (let dia = 1; dia <= ultimoDia; dia += 1) {
+    const valores = porDia.get(dia);
+    dias.push({
+      dia,
+      esJueves: diaDeLaSemana(anio, mes, dia) === 4,
+      pedidos: valores?.pedidos ?? 0,
+      unidades: valores?.unidades ?? 0,
+    });
+  }
+
+  return {
+    anio,
+    mes,
+    dias,
+    totalPedidos: dias.reduce((n, d) => n + d.pedidos, 0),
+    totalUnidades: dias.reduce((n, d) => n + d.unidades, 0),
+    ultimoDia,
+  };
+}

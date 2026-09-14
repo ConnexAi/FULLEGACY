@@ -13,6 +13,7 @@ import {
   diasDelMes,
   esMesValido,
   etiquetaDeMes,
+  resumirPorDia,
   type AgregadoDia,
 } from "@/lib/reportes/historial-mensual";
 
@@ -195,6 +196,39 @@ check("todo en cero, sin excepciones",
   futuro.hojas.every((h) => h.filas.every((f) => f.pedidos === 0 && f.unidades === 0)), true);
 check("febrero incompleto conserva sus 28 filas",
   construirHistorialMensual(2026, 2, productos, []).hojas[0].filas.length, 28);
+
+/* ── Serie diaria del vistazo de inicio ─────────────────────────────────── */
+console.log("\n── Vistazo de inicio: pedidos por día, todos los productos ──");
+
+const serie = resumirPorDia(2026, 9, septiembre, 12);
+check("la serie se corta en el día indicado (hoy)", serie.dias.length, 12);
+check("y el último día es ese", serie.ultimoDia, 12);
+check("el día 3 suma los productos de ese día",
+  serie.dias.find((d) => d.dia === 3)?.pedidos, 2);
+// Ojo: en el vistazo, una orden-combo suma en cada producto que contiene, así
+// que el día 10 marca 2 aunque sea una sola orden. Es volumen de despacho, no
+// órdenes únicas; con 2 combos en 1618 órdenes reales la diferencia es mínima.
+check("el día 10 suma las dos líneas del combo (una orden, dos productos)",
+  [serie.dias.find((d) => d.dia === 10)?.pedidos,
+   serie.dias.find((d) => d.dia === 10)?.unidades], [2, 3]);
+check("los días sin despachos quedan en cero, no ausentes",
+  serie.dias.find((d) => d.dia === 2), { dia: 2, esJueves: false, pedidos: 0, unidades: 0 });
+check("los jueves quedan marcados también acá",
+  serie.dias.filter((d) => d.esJueves).map((d) => d.dia), [3, 10]);
+// día 3 (2 ped / 3 uni) + día 5 (1/4) + día 8 (1/3) + día 10 (2/3)
+check("totales de la serie", [serie.totalPedidos, serie.totalUnidades], [6, 13]);
+
+console.log("\n── El corte por día de hoy ──");
+check("un mes recién empezado deja un solo punto",
+  resumirPorDia(2026, 9, septiembre, 1).dias.map((d) => d.dia), [1]);
+check("sin corte, la serie llega al fin del mes",
+  resumirPorDia(2026, 9, septiembre).dias.length, 30);
+check("un corte más allá del mes se limita al último día",
+  resumirPorDia(2026, 9, septiembre, 99).dias.length, 30);
+check("día 0 (caso límite) no rompe: serie vacía",
+  resumirPorDia(2026, 9, septiembre, 0).dias.length, 0);
+check("un mes sin datos da la serie completa en cero",
+  resumirPorDia(2026, 12, [], 31).dias.every((d) => d.pedidos === 0 && d.unidades === 0), true);
 
 console.log(`\n${fallos === 0 ? "HISTORIAL MENSUAL CORRECTO" : `${fallos} FALLOS`}`);
 process.exit(fallos ? 1 : 0);

@@ -12,6 +12,10 @@ const FORMATO_FECHA = new Intl.DateTimeFormat("es-CO", {
 /**
  * Listado de cargas anteriores.
  *
+ * La usan tanto /cargas (debajo del formulario) como /reportes-ordenados, que
+ * es la forma de llegar a un reporte viejo sin pasar por la subida. Cada fila
+ * enlaza a /cargas/[id], que es donde vive el Reporte Ordenado.
+ *
  * Lee con la sesión de Diego (no con service_role): `cargas` tiene una policy
  * de lectura para `authenticated`.
  */

@@ -12,6 +12,16 @@ export function mesActualEnBogota(): { anio: number; mes: number } {
   return { anio, mes };
 }
 
+/** El día del mes de hoy, en el calendario colombiano. */
+export function diaDeHoyEnBogota(): number {
+  return Number(
+    new Intl.DateTimeFormat("en-CA", {
+      day: "2-digit",
+      timeZone: "America/Bogota",
+    }).format(new Date()),
+  );
+}
+
 export interface OpcionMes {
   anio: number;
   mes: number;
