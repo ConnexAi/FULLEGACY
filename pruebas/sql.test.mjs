@@ -22,6 +22,7 @@ const MIGRACIONES = [
   "20260827100100_procesar_carga_v3.sql",
   "20260908100000_historial_mensual.sql",
   "20260914100000_totales_diarios.sql",
+  "20260915100000_historial_mensual_por_producto.sql",
 ];
 
 // PGlite vuelca todo su bundle en el stack: sobra ruido para leer un fallo.

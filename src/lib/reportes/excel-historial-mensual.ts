@@ -44,10 +44,16 @@ const COLUMNAS: ColumnaTabla<FilaDia>[] = [
 ];
 
 /**
- * Arma el historial mensual: un libro con una hoja por producto.
+ * Arma el historial mensual: un libro con una hoja por producto que tuvo
+ * pedidos ese mes.
  *
  * Todas las hojas llevan el encabezado de marca del Sprint 2, así que el
  * archivo se ve igual que el Reporte Ordenado.
+ *
+ * Si ningún producto tuvo movimiento (mes futuro, o recién empezado), el libro
+ * no se queda vacío: un .xlsx sin ninguna hoja no es un archivo válido para
+ * Excel (Office lo rechaza o lo repara al abrir), así que se escribe una única
+ * hoja de aviso en su lugar.
  */
 export async function generarExcelHistorialMensual(
   historial: HistorialMensual,
@@ -55,11 +61,35 @@ export async function generarExcelHistorialMensual(
   const libro = crearLibro();
   const usados = new Set<string>();
 
-  for (const hoja of historial.hojas) {
-    await escribirHojaProducto(libro, hoja, historial.etiquetaMes, usados);
+  if (historial.hojas.length === 0) {
+    await escribirHojaSinMovimiento(libro, historial.etiquetaMes);
+  } else {
+    for (const hoja of historial.hojas) {
+      await escribirHojaProducto(libro, hoja, historial.etiquetaMes, usados);
+    }
   }
 
   return libro.xlsx.writeBuffer();
+}
+
+async function escribirHojaSinMovimiento(
+  libro: ExcelJS.Workbook,
+  etiquetaMes: string,
+): Promise<void> {
+  const hoja = libro.addWorksheet("Sin movimiento");
+  const columnasBanner = COLUMNAS.length;
+
+  const filaMensaje = await agregarEncabezado(libro, hoja, {
+    titulo: "Historial mensual",
+    subtitulo: etiquetaMes,
+    columnas: columnasBanner,
+  });
+
+  const celda = hoja.getCell(filaMensaje, 1);
+  celda.value = `Ningún producto tuvo pedidos con fecha de guía generada en ${etiquetaMes}.`;
+  celda.font = { name: "Calibri", size: 11, color: { argb: MARCA.texto } };
+  celda.alignment = { vertical: "middle", wrapText: true };
+  hoja.mergeCells(filaMensaje, 1, filaMensaje, columnasBanner);
 }
 
 async function escribirHojaProducto(

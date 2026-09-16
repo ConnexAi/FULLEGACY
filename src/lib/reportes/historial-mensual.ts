@@ -18,13 +18,59 @@ export const ESTADOS_NO_COMPLETADOS = ["DEVOLUCION"] as const;
 export const AVISO_PRELIMINAR =
   "Conteo preliminar automático, verificar antes de usar como dato final.";
 
-/** Una fila de la agregación que devuelve `historial_mensual()`. */
+/**
+ * Un (producto, día) con movimiento: la unidad con la que trabaja toda la
+ * lógica de negocio de este módulo (armar hojas, totales, Excel).
+ *
+ * No es la forma en la que viaja desde la base — ver `FilaHistorialMensual` y
+ * `aplanarHistorialMensual` — sino la que consumen `construirHistorialMensual`
+ * y sus pruebas. Mantenerla separada del contrato de red es lo que permite que
+ * ese contrato cambie (como pasó acá) sin tocar la lógica de negocio.
+ */
 export interface AgregadoDia {
   producto_id: number;
   dia: number;
   pedidos: number;
   unidades: number;
   no_completados: number;
+}
+
+/** Un día dentro de `FilaHistorialMensual.dias`, tal como lo arma el jsonb_agg de SQL. */
+export interface DiaAgregado {
+  dia: number;
+  pedidos: number;
+  unidades: number;
+  no_completados: number;
+}
+
+/**
+ * Una fila TAL COMO LA DEVUELVE `historial_mensual()`: una por producto, con
+ * los días agregados adentro.
+ *
+ * Es la forma que evita el problema de fondo — con esto, el número de filas
+ * que cruza la red depende solo de cuántos productos tuvieron movimiento ese
+ * mes, nunca de los días. Un catálogo de 40+ productos, todos vendiendo los 31
+ * días del mes, sigue siendo 40 filas, no 1240.
+ */
+export interface FilaHistorialMensual {
+  producto_id: number;
+  dias: DiaAgregado[];
+}
+
+/**
+ * Aplana la respuesta de `historial_mensual()` a la forma plana con la que
+ * trabaja el resto de este módulo.
+ *
+ * Es el único lugar que conoce el contrato de red de la función: si ese
+ * contrato vuelve a cambiar, es acá donde se ajusta, sin tocar
+ * `construirHistorialMensual` ni sus pruebas.
+ */
+export function aplanarHistorialMensual(
+  filas: FilaHistorialMensual[],
+): AgregadoDia[] {
+  return filas.flatMap((fila) =>
+    fila.dias.map((dia) => ({ producto_id: fila.producto_id, ...dia })),
+  );
 }
 
 export interface Producto {
@@ -58,7 +104,10 @@ export interface HistorialMensual {
   mes: number;
   /** Nombre del mes en español, para títulos. */
   etiquetaMes: string;
+  /** Solo los productos con al menos un pedido ese mes. */
   hojas: HojaProducto[];
+  /** Tamaño del catálogo completo, para mostrar "N de M productos" en la pantalla. */
+  totalProductosEnCatalogo: number;
 }
 
 const JUEVES = 4;
@@ -97,10 +146,20 @@ export function esMesValido(anio: number, mes: number): boolean {
 }
 
 /**
- * Cruza el catálogo completo de productos con la agregación del mes.
+ * Cruza el catálogo con la agregación del mes.
  *
- * Entran TODOS los productos, hayan tenido pedidos o no: si no tuvieron, su
- * hoja sale con todos los días en cero. Y entran todos los días del mes,
+ * Solo generan hoja los productos que tuvieron AL MENOS UN pedido con fecha de
+ * guía generada ese mes. Con un catálogo que va a crecer a 30-40+ productos y
+ * que va a tener bajas, una hoja en cero por cada producto sin movimiento (o
+ * descontinuado) es ruido que Diego no quiere ver — decisión explícita del
+ * Sprint 3 revertida acá.
+ *
+ * Cada fila que devuelve `historial_mensual()` ya representa al menos un
+ * pedido de ese producto ese día (agrupa con `count`, nunca emite un cero), así
+ * que "el producto aparece en `agregados`" es exactamente "tuvo pedidos" — no
+ * hace falta un umbral aparte.
+ *
+ * Los días del mes sí se completan todos dentro de cada hoja que sí se genera,
  * incluso los que aún no llegaron — así el archivo se puede descargar a mitad
  * de mes sin que falten filas.
  */
@@ -122,7 +181,8 @@ export function construirHistorialMensual(
     porDia.set(agregado.dia, agregado);
   }
 
-  const hojas = [...productos]
+  const hojas = productos
+    .filter((producto) => porProducto.has(producto.id))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }))
     .map((producto) => {
       const porDia = porProducto.get(producto.id);
@@ -152,7 +212,13 @@ export function construirHistorialMensual(
       };
     });
 
-  return { anio, mes, etiquetaMes: etiquetaDeMes(anio, mes), hojas };
+  return {
+    anio,
+    mes,
+    etiquetaMes: etiquetaDeMes(anio, mes),
+    hojas,
+    totalProductosEnCatalogo: productos.length,
+  };
 }
 
 /** Una fila de `totales_diarios()`: el día ya agregado, sin producto. */

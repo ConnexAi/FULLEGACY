@@ -24,7 +24,8 @@ export default async function PaginaHistorial({
 
   const historial = await obtenerHistorialMensual(elegido.anio, elegido.mes);
 
-  const conMovimiento = historial.hojas.filter((hoja) => hoja.totalPedidos > 0);
+  // `historial.hojas` ya viene filtrada: solo trae los productos con al menos
+  // un pedido este mes, que es exactamente lo que va a tener el Excel.
   const totalPedidos = historial.hojas.reduce((n, h) => n + h.totalPedidos, 0);
   const totalUnidades = historial.hojas.reduce((n, h) => n + h.totalUnidades, 0);
 
@@ -61,17 +62,26 @@ export default async function PaginaHistorial({
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">{historial.etiquetaMes}</h2>
 
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
           <Dato etiqueta="Pedidos despachados" valor={totalPedidos} />
           <Dato etiqueta="Unidades" valor={totalUnidades} />
-          <Dato etiqueta="Productos con movimiento" valor={conMovimiento.length} />
-          <Dato etiqueta="Hojas en el archivo" valor={historial.hojas.length} />
+          <div>
+            <dt className="text-xs text-neutral-500 dark:text-neutral-400">
+              Hojas en el archivo
+            </dt>
+            <dd className="text-xl font-semibold tabular-nums">
+              {historial.hojas.length}
+              <span className="ml-1 text-sm font-normal text-neutral-500 dark:text-neutral-400">
+                de {historial.totalProductosEnCatalogo} en el catálogo
+              </span>
+            </dd>
+          </div>
         </dl>
 
-        {totalPedidos === 0 ? (
+        {historial.hojas.length === 0 ? (
           <p className="rounded-lg border border-black/10 px-4 py-3 text-sm text-neutral-600 dark:border-white/15 dark:text-neutral-300">
             Este mes todavía no tiene órdenes con guía generada. El Excel se
-            descarga igual, con todas las hojas y los días en cero.
+            descarga igual, con una hoja avisando que no hubo movimiento.
           </p>
         ) : null}
       </section>
@@ -94,6 +104,10 @@ export default async function PaginaHistorial({
             quedaron en {ESTADOS_NO_COMPLETADOS.join(", ")}. {AVISO_PRELIMINAR}
           </li>
           <li>Los jueves quedan marcados con un fondo azul tenue.</li>
+          <li>
+            Un producto sin pedidos ese mes no genera hoja — así el archivo no
+            se llena de hojas en cero a medida que crece el catálogo.
+          </li>
         </ul>
       </section>
     </main>

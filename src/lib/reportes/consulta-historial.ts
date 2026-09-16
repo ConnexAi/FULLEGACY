@@ -2,9 +2,10 @@ import "server-only";
 
 import {
   ESTADOS_NO_COMPLETADOS,
+  aplanarHistorialMensual,
   construirHistorialMensual,
   resumirPorDia,
-  type AgregadoDia,
+  type FilaHistorialMensual,
   type HistorialMensual,
   type Producto,
   type ResumenDelMes,
@@ -24,7 +25,7 @@ export async function obtenerHistorialMensual(
 ): Promise<HistorialMensual> {
   const supabase = await crearClienteServidor();
 
-  const [{ data: productos, error: errorProductos }, { data: agregados, error: errorAgregados }] =
+  const [{ data: productos, error: errorProductos }, { data: filas, error: errorFilas }] =
     await Promise.all([
       // Todos los productos del catálogo, no solo los que vendieron este mes:
       // un producto sin pedidos igual tiene su hoja, con los días en cero.
@@ -37,14 +38,16 @@ export async function obtenerHistorialMensual(
     ]);
 
   if (errorProductos) throw new Error(errorProductos.message);
-  if (errorAgregados) throw new Error(errorAgregados.message);
+  if (errorFilas) throw new Error(errorFilas.message);
 
-  return construirHistorialMensual(
-    anio,
-    mes,
-    (productos ?? []) as Producto[],
-    (agregados ?? []) as AgregadoDia[],
+  // `historial_mensual()` viene una fila por producto, con los días agregados
+  // adentro (ver la migración): se aplana acá, en el único lugar que conoce
+  // ese contrato, antes de pasarla a la lógica de negocio.
+  const agregados = aplanarHistorialMensual(
+    (filas ?? []) as unknown as FilaHistorialMensual[],
   );
+
+  return construirHistorialMensual(anio, mes, (productos ?? []) as Producto[], agregados);
 }
 
 /** Totales por producto del mes, para el dashboard. */
@@ -58,10 +61,11 @@ export async function obtenerTotalesDelMes(
   anio: number,
   mes: number,
 ): Promise<TotalProducto[]> {
+  // `historial.hojas` ya viene filtrada a los productos con pedidos este mes
+  // (ver construirHistorialMensual), así que no hace falta filtrar de nuevo.
   const historial = await obtenerHistorialMensual(anio, mes);
 
   return historial.hojas
-    .filter((hoja) => hoja.totalPedidos > 0 || hoja.totalUnidades > 0)
     .map((hoja) => ({
       producto: hoja.producto.nombre,
       pedidos: hoja.totalPedidos,

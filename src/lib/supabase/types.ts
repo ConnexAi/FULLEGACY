@@ -257,7 +257,11 @@ export interface Database {
         Args: { p_anio: number; p_mes: number };
         Returns: { dia: number; pedidos: number; unidades: number }[];
       };
-      /** Agregación del historial mensual. Ver supabase/migrations/20260908100000_historial_mensual.sql */
+      /**
+       * Agregación del historial mensual: una fila por producto, con los días
+       * agregados en un array jsonb. Ver
+       * supabase/migrations/20260915100000_historial_mensual_por_producto.sql
+       */
       historial_mensual: {
         Args: {
           p_anio: number;
@@ -266,10 +270,7 @@ export interface Database {
         };
         Returns: {
           producto_id: number;
-          dia: number;
-          pedidos: number;
-          unidades: number;
-          no_completados: number;
+          dias: Json;
         }[];
       };
     };

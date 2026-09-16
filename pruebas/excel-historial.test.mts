@@ -31,6 +31,7 @@ const check = (n: string, real: unknown, esp: unknown) => {
 const productos = [
   { id: 1, nombre: "Hydra" },
   { id: 2, nombre: "KIT ALIVIO GARGANTA GUT Y ESPIRULINA" }, // 36 caracteres
+  // Sin agregados: no tuvo ningún pedido este mes. No debe generar hoja.
   { id: 3, nombre: "Producto sin ventas" },
 ];
 const agregados: AgregadoDia[] = [
@@ -49,12 +50,15 @@ const leido = new ExcelJS.Workbook();
 await leido.xlsx.readFile(ruta);
 
 /* ── Estructura ─────────────────────────────────────────────────────────── */
-console.log("── Una hoja por producto ──");
+console.log("── Solo una hoja por producto CON pedidos ese mes ──");
 check("firma ZIP de xlsx", Buffer.from(buffer as ArrayBuffer).subarray(0, 2).toString(), "PK");
-check("tres hojas", leido.worksheets.length, 3);
+check("dos hojas: el catálogo tiene 3 productos, solo 2 con pedidos",
+  leido.worksheets.length, 2);
 check("nombradas por producto, A→Z",
   leido.worksheets.map((h) => h.name),
-  ["Hydra", "KIT ALIVIO GARGANTA GUT Y ESPIR", "Producto sin ventas"]);
+  ["Hydra", "KIT ALIVIO GARGANTA GUT Y ESPIR"]);
+check("\"Producto sin ventas\" (sin pedidos este mes) NO generó hoja",
+  leido.worksheets.some((h) => h.name === "Producto sin ventas"), false);
 check("el nombre largo se recorta a los 31 de Excel",
   leido.worksheets[1].name.length, 31);
 
@@ -73,7 +77,7 @@ check("los caracteres prohibidos por Excel se limpian",
 console.log("\n── Estilo de marca ──");
 const hoja = leido.worksheets[0];
 check("el logo está en cada hoja",
-  leido.worksheets.map((h) => h.getImages().length), [1, 1, 1]);
+  leido.worksheets.map((h) => h.getImages().length), [1, 1]);
 check("una sola copia embebida en el libro", (leido.model.media ?? []).length, 1);
 const bytes = leido.model.media?.[0]?.buffer as unknown as Uint8Array | undefined;
 check("y es un PNG real", Buffer.from(bytes!).subarray(1, 4).toString(), "PNG");
@@ -112,9 +116,6 @@ check("el día 3 trae sus valores",
   [3, 2, 3, null, 1]);
 check("la columna de devoluciones va vacía en todas las filas",
   filas.every((_, i) => hoja.getRow(filaEnc + 1 + i).getCell(4).value === null), true);
-check("un producto sin ventas trae sus 30 días en cero",
-  Array.from({ length: 30 }, (_, i) => leido.worksheets[2].getRow(filaEnc + 1 + i).getCell(2).value)
-    .every((v) => v === 0), true);
 
 /* ── Jueves ─────────────────────────────────────────────────────────────── */
 console.log("\n── Marca visual en los jueves ──");
@@ -156,6 +157,31 @@ check("fila de totales",
   ["TOTAL", 3, 4, null, 1]);
 check("nombre del archivo", nombreArchivoHistorial(2026, 9), "historial-2026-09.xlsx");
 check("mes de un dígito con cero", nombreArchivoHistorial(2026, 1), "historial-2026-01.xlsx");
+
+/* ── Mes sin NINGÚN producto activo: el libro no puede quedar sin hojas ──── */
+console.log("\n── Mes sin ningún producto activo ──");
+
+const historialVacio = construirHistorialMensual(2026, 12, productos, []);
+check("cero hojas de producto (ninguno tuvo pedidos)", historialVacio.hojas.length, 0);
+
+const bufferVacio = await generarExcelHistorialMensual(historialVacio);
+const rutaVacio = path.join(tmpdir(), "fullegacy-historial-vacio-prueba.xlsx");
+writeFileSync(rutaVacio, Buffer.from(bufferVacio as ArrayBuffer));
+
+const leidoVacio = new ExcelJS.Workbook();
+await leidoVacio.xlsx.readFile(rutaVacio);
+
+check("el libro NO queda sin hojas: trae una de aviso",
+  leidoVacio.worksheets.length, 1);
+check("y esa hoja sí trae el logo (misma marca que las demás)",
+  leidoVacio.worksheets[0].getImages().length, 1);
+
+const textoAviso = leidoVacio.worksheets.reduce(
+  (acc, h) => acc + h.getSheetValues().flat().filter((v) => typeof v === "string").join(" "),
+  "",
+);
+check("el aviso menciona que no hubo pedidos", textoAviso.includes("Ningún producto"), true);
+check("y nombra el mes", textoAviso.includes(historialVacio.etiquetaMes), true);
 
 console.log(`\n${fallos === 0 ? "EXCEL DEL HISTORIAL CORRECTO" : `${fallos} FALLOS`}`);
 console.log(`(archivo en ${ruta})`);

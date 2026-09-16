@@ -8,6 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 import {
   ESTADOS_NO_COMPLETADOS,
+  aplanarHistorialMensual,
   construirHistorialMensual,
   diaDeLaSemana,
   diasDelMes,
@@ -15,6 +16,7 @@ import {
   etiquetaDeMes,
   resumirPorDia,
   type AgregadoDia,
+  type FilaHistorialMensual,
   type TotalDia,
 } from "@/lib/reportes/historial-mensual";
 
@@ -33,6 +35,7 @@ const MIGRACIONES = [
   "20260827100100_procesar_carga_v3.sql",
   "20260908100000_historial_mensual.sql",
   "20260914100000_totales_diarios.sql",
+  "20260915100000_historial_mensual_por_producto.sql",
 ];
 
 let fallos = 0;
@@ -104,14 +107,18 @@ await db.query(`insert into ordenes (id_orden, estado, fecha_orden, fecha_guia_g
 await db.query(`insert into orden_productos (orden_id, producto_id, variacion_id, cantidad, linea) values
   (108, 1, 11, 1, 1), (108, 2, null, 2, 2)`);
 
-const agregar = async (anio: number, mes: number, estados: string[]) =>
-  (await db.query<AgregadoDia>(
+// `historial_mensual()` devuelve una fila por producto con los días
+// agregados adentro (ver la migración de reestructuración): se pide tal cual
+// y se aplana con la misma función que usa la app, para probar el contrato
+// real de punta a punta, no una forma auxiliar solo de la prueba.
+const agregar = async (anio: number, mes: number, estados: string[]) => {
+  const filas = (await db.query<{ producto_id: number | string; dias: FilaHistorialMensual["dias"] }>(
     "select * from public.historial_mensual($1, $2, $3::text[])",
     [anio, mes, estados],
-  )).rows.map((f) => ({
-    producto_id: Number(f.producto_id), dia: Number(f.dia), pedidos: Number(f.pedidos),
-    unidades: Number(f.unidades), no_completados: Number(f.no_completados),
-  }));
+  )).rows.map((f) => ({ producto_id: Number(f.producto_id), dias: f.dias }));
+
+  return aplanarHistorialMensual(filas);
+};
 
 const septiembre = await agregar(2026, 9, [...ESTADOS_NO_COMPLETADOS]);
 
@@ -151,7 +158,7 @@ check("Waggy pet también",
   septiembre.find((f) => f.producto_id === 2 && f.dia === 10)?.unidades, 2);
 
 /* ── Armado de las hojas ────────────────────────────────────────────────── */
-console.log("\n── Una hoja por producto, todos los días del mes ──");
+console.log("\n── Solo generan hoja los productos CON pedidos ese mes ──");
 const productos = [
   { id: 1, nombre: "Hydra" },
   { id: 2, nombre: "Waggy pet" },
@@ -159,17 +166,17 @@ const productos = [
 ];
 const historial = construirHistorialMensual(2026, 9, productos, septiembre);
 
-check("una hoja por producto del catálogo", historial.hojas.length, 3);
-check("ordenadas A→Z", historial.hojas.map((h) => h.producto.nombre),
-  ["Hydra", "Producto sin ventas", "Waggy pet"]);
-check("cada hoja trae los 30 días de septiembre",
-  historial.hojas.map((h) => h.filas.length), [30, 30, 30]);
-
-const sinVentas = historial.hojas.find((h) => h.producto.id === 3)!;
-check("un producto sin pedidos igual tiene hoja",
-  [sinVentas.totalPedidos, sinVentas.totalUnidades], [0, 0]);
-check("con todos sus días en cero",
-  sinVentas.filas.every((f) => f.pedidos === 0 && f.unidades === 0), true);
+// El catálogo tiene 3 productos, pero septiembre solo trajo pedidos para 2.
+check("un catálogo de 3 con solo 2 activos genera solo 2 hojas, no las 3",
+  historial.hojas.length, 2);
+check("el producto SIN pedidos ese mes no aparece",
+  historial.hojas.some((h) => h.producto.id === 3), false);
+check("los que sí tuvieron pedidos, ordenados A→Z",
+  historial.hojas.map((h) => h.producto.nombre), ["Hydra", "Waggy pet"]);
+check("cada hoja que sí se genera trae los 30 días completos",
+  historial.hojas.map((h) => h.filas.length), [30, 30]);
+check("el tamaño del catálogo completo queda disponible aparte",
+  historial.totalProductosEnCatalogo, 3);
 
 const hydra = historial.hojas.find((h) => h.producto.id === 1)!;
 check("los días sin movimiento quedan en cero, no ausentes",
@@ -190,14 +197,21 @@ console.log("\n── Jueves marcados ──");
 check("los jueves de septiembre 2026 son 3, 10, 17 y 24",
   hydra.filas.filter((f) => f.esJueves).map((f) => f.dia), [3, 10, 17, 24]);
 
-console.log("\n── Un mes incompleto no rompe nada ──");
+console.log("\n── Un mes sin NINGÚN producto activo no rompe nada ──");
 const futuro = construirHistorialMensual(2026, 12, productos, []);
-check("diciembre sin datos: 3 hojas de 31 filas",
-  [futuro.hojas.length, futuro.hojas[0].filas.length], [3, 31]);
-check("todo en cero, sin excepciones",
-  futuro.hojas.every((h) => h.filas.every((f) => f.pedidos === 0 && f.unidades === 0)), true);
-check("febrero incompleto conserva sus 28 filas",
-  construirHistorialMensual(2026, 2, productos, []).hojas[0].filas.length, 28);
+check("diciembre sin datos: cero hojas (no las 3 del catálogo)",
+  futuro.hojas.length, 0);
+check("pero el tamaño del catálogo se conserva",
+  futuro.totalProductosEnCatalogo, 3);
+
+console.log("\n── Un mes incompleto (en curso) sí genera sus hojas activas ──");
+const febrero: AgregadoDia[] = [
+  { producto_id: 1, dia: 5, pedidos: 2, unidades: 2, no_completados: 0 },
+];
+const incompleto = construirHistorialMensual(2026, 2, productos, febrero);
+check("solo el producto con pedidos genera hoja", incompleto.hojas.length, 1);
+check("febrero conserva sus 28 filas completas",
+  incompleto.hojas[0].filas.length, 28);
 
 /* ── Totales agregados: el combo cuenta UNA vez ─────────────────────────── */
 console.log("\n── Totales que cruzan productos ──");
@@ -274,6 +288,74 @@ check("suma de días = órdenes únicas del mes",
 console.log("\n── Mes sin datos ──");
 const vacio = (await db.query<TotalDia>("select * from public.totales_diarios($1, $2)", [2026, 12])).rows;
 check("diciembre no devuelve filas", vacio.length, 0);
+
+/* ── El contrato ya no depende de los días: catálogo grande ─────────────── */
+console.log("\n── Catálogo grande: 42 productos vendiendo los 31 días de octubre ──");
+
+// Con la forma vieja (una fila por producto × día), esto habría sido
+// 42 × 31 = 1302 filas — por encima del tope de PostgREST (típicamente 1000).
+// Con la nueva forma (una fila por producto), debe seguir siendo 42.
+await db.exec(`
+  insert into productos (id, nombre, sku)
+  select 1000 + n, 'Producto masivo ' || lpad(n::text, 2, '0'), null
+  from generate_series(1, 42) as n;
+
+  insert into ordenes (id_orden, estado, fecha_orden, fecha_guia_generada, carga_id)
+  select
+    9000000 + (p.n - 1) * 100 + d.dia,
+    'ENTREGADO',
+    (make_date(2026, 10, d.dia) + time '15:00') at time zone 'America/Bogota',
+    (make_date(2026, 10, d.dia) + time '15:00') at time zone 'America/Bogota',
+    1
+  from generate_series(1, 42) as p(n)
+  cross join generate_series(1, 31) as d(dia);
+
+  insert into orden_productos (orden_id, producto_id, variacion_id, cantidad, linea)
+  select
+    9000000 + (p.n - 1) * 100 + d.dia,
+    1000 + p.n,
+    null,
+    1,
+    1
+  from generate_series(1, 42) as p(n)
+  cross join generate_series(1, 31) as d(dia);
+`);
+
+check("octubre 2026 tiene 31 días (el escenario que se quería estresar)",
+  diasDelMes(2026, 10), 31);
+
+const filasOctubre = (await db.query<{ producto_id: number | string; dias: FilaHistorialMensual["dias"] }>(
+  "select * from public.historial_mensual($1, $2, $3::text[])",
+  [2026, 10, []],
+)).rows;
+
+check("una fila por producto — NO una por (producto, día)",
+  filasOctubre.length, 42);
+check("muy por debajo de cualquier tope de PostgREST (1000)",
+  filasOctubre.length < 1000, true);
+check("cada producto trae sus 31 días adentro, en el array",
+  filasOctubre.every((f) => f.dias.length === 31), true);
+check("un día cualquiera trae la forma esperada",
+  filasOctubre[0].dias.find((d) => d.dia === 15),
+  { dia: 15, pedidos: 1, unidades: 1, no_completados: 0 });
+
+const octubreAplanado = aplanarHistorialMensual(
+  filasOctubre.map((f) => ({ producto_id: Number(f.producto_id), dias: f.dias })),
+);
+check("aplanado, son los 1302 (producto, día) reales — no se perdió nada",
+  octubreAplanado.length, 42 * 31);
+
+const catalogoGrande = Array.from({ length: 42 }, (_, i) => ({
+  id: 1000 + i + 1, nombre: `Producto masivo ${String(i + 1).padStart(2, "0")}`,
+}));
+const historialGrande = construirHistorialMensual(2026, 10, catalogoGrande, octubreAplanado);
+check("construirHistorialMensual arma las 42 hojas igual que siempre",
+  historialGrande.hojas.length, 42);
+check("cada hoja: 31 filas, 1 pedido y 1 unidad cada una",
+  historialGrande.hojas.every((h) =>
+    h.filas.length === 31 && h.filas.every((f) => f.pedidos === 1 && f.unidades === 1)), true);
+check("totales de una hoja cualquiera",
+  [historialGrande.hojas[0].totalPedidos, historialGrande.hojas[0].totalUnidades], [31, 31]);
 
 console.log(`\n${fallos === 0 ? "HISTORIAL MENSUAL CORRECTO" : `${fallos} FALLOS`}`);
 process.exit(fallos ? 1 : 0);
