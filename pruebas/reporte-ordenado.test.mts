@@ -60,6 +60,32 @@ check("PRODUCTO lista los componentes con sus cantidades",
   combo.producto, "COMBO · Dije Carmen (1) + Pulsera vancleef (3)");
 check("CANTIDAD del combo = 1 pedido a preparar", combo.cantidad, 1);
 
+console.log("\n── Combo con cantidades distintas por componente (regla confirmada por Diego) ──");
+// El caso puntual que Diego pidió cubrir: 3 Hydra + 2 Waggy pet en una sola
+// orden. En los datos reales de Dropi los únicos dos combos que existen son
+// 1+1, así que este patrón (cantidades > 1 y distintas entre componentes)
+// nunca se había probado. Sigue siendo una sola fila; el detalle de cuántas
+// unidades va de cada producto queda en PRODUCTO, no se pierde.
+const combo3y2 = construirReporteOrdenado([
+  linea({ id_orden: 300, linea: 1, producto_nombre: "Hydra", producto_id: 1, cantidad: 3 }),
+  linea({ id_orden: 300, linea: 2, producto_nombre: "Waggy pet", producto_id: 2, cantidad: 2 }),
+]);
+const fila3y2 = combo3y2.filas[0];
+check("una sola fila para la orden", combo3y2.filas.length, 1);
+check("TIPO COMBO", fila3y2.tipo, "COMBO");
+check("PRODUCTO: 'Hydra (3) + Waggy pet (2)', no '(1) + (1)'",
+  fila3y2.producto, "COMBO · Hydra (3) + Waggy pet (2)");
+check("CANTIDAD sigue en 1: la fila es un pedido, no una suma de unidades",
+  fila3y2.cantidad, 1);
+check("el conteo por producto refleja 3 y 2 — no 1 y 1",
+  combo3y2.conteoPorProducto,
+  [
+    { producto: "Hydra", pedidos: 1, unidades: 3 },
+    { producto: "Waggy pet", pedidos: 1, unidades: 2 },
+  ]);
+check("las unidades totales del reporte son 3+2=5, no 2 (una por componente)",
+  combo3y2.totalUnidades, 5);
+
 console.log("\n── El combo se ancla al PRIMER producto que contiene ──");
 // "Pulsera dubai" es alfabéticamente anterior, pero viene en linea 2:
 // el combo debe ordenarse bajo "Pulsera vancleef" (linea 1), como FulfillPro.
