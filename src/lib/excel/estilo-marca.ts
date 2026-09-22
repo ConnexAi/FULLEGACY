@@ -264,6 +264,46 @@ function ajustarAnchos<T>(
   });
 }
 
+export interface OpcionesFilaTotales<T> {
+  fila: number;
+  /** Las mismas columnas de la tabla: de ahí sale la alineación de cada celda. */
+  columnas: ColumnaTabla<T>[];
+  /**
+   * Un valor por columna, en el mismo orden. `null` (o faltante) deja la celda
+   * vacía pero conservando el borde, para que la línea cruce toda la tabla.
+   */
+  valores: (string | number | null)[];
+}
+
+/**
+ * Fila de totales al pie de una tabla: negrita en azul de marca y una línea
+ * fina arriba que la separa de los datos.
+ *
+ * Cada celda hereda la alineación de su columna, así que el rótulo queda
+ * alineado como el resto de esa columna y los números siguen a la derecha.
+ *
+ * Devuelve la primera fila libre debajo.
+ */
+export function escribirFilaTotales<T>(
+  hoja: ExcelJS.Worksheet,
+  { fila, columnas, valores }: OpcionesFilaTotales<T>,
+): number {
+  const filaExcel = hoja.getRow(fila);
+
+  columnas.forEach((columna, i) => {
+    const celda = filaExcel.getCell(i + 1);
+    celda.value = valores[i] ?? null;
+    celda.font = { name: "Calibri", size: 10, bold: true, color: { argb: MARCA.azul } };
+    celda.alignment = {
+      horizontal: columna.alineacion ?? "left",
+      vertical: "middle",
+    };
+    celda.border = { top: { style: "thin", color: { argb: MARCA.azul } } };
+  });
+
+  return fila + 1;
+}
+
 /** Nota al pie: aclaraciones que Diego debe leer antes de usar el dato. */
 export function agregarNotaAlPie(
   hoja: ExcelJS.Worksheet,

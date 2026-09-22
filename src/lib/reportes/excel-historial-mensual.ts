@@ -7,6 +7,7 @@ import {
   agregarEncabezado,
   agregarNotaAlPie,
   crearLibro,
+  escribirFilaTotales,
   escribirTabla,
   type ColumnaTabla,
 } from "@/lib/excel/estilo-marca";
@@ -116,7 +117,18 @@ async function escribirHojaProducto(
   });
 
   const filaTotales = filaTabla + datos.filas.length + 1;
-  escribirTotales(hoja, filaTotales, datos);
+  escribirFilaTotales(hoja, {
+    fila: filaTotales,
+    columnas: COLUMNAS,
+    // La de devoluciones va vacía: la llena Diego a mano, no se totaliza.
+    valores: [
+      "TOTAL",
+      datos.totalPedidos,
+      datos.totalUnidades,
+      null,
+      datos.totalNoCompletados,
+    ],
+  });
 
   agregarNotaAlPie(
     hoja,
@@ -124,31 +136,6 @@ async function escribirHojaProducto(
     `Fondo azul tenue = jueves.  ·  "No completados": ${AVISO_PRELIMINAR}`,
     COLUMNAS.length,
   );
-}
-
-function escribirTotales(
-  hoja: ExcelJS.Worksheet,
-  fila: number,
-  datos: HojaProducto,
-): void {
-  const valores = [
-    "TOTAL",
-    datos.totalPedidos,
-    datos.totalUnidades,
-    null,
-    datos.totalNoCompletados,
-  ];
-
-  valores.forEach((valor, i) => {
-    const celda = hoja.getCell(fila, i + 1);
-    celda.value = valor;
-    celda.font = { name: "Calibri", size: 10, bold: true, color: { argb: MARCA.azul } };
-    celda.alignment = {
-      horizontal: i === 0 ? "center" : "right",
-      vertical: "middle",
-    };
-    celda.border = { top: { style: "thin", color: { argb: MARCA.azul } } };
-  });
 }
 
 /**

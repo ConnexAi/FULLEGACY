@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import {
   agregarEncabezado,
   crearLibro,
+  escribirFilaTotales,
   escribirTabla,
   type ColumnaTabla,
 } from "@/lib/excel/estilo-marca";
@@ -83,10 +84,21 @@ export async function generarExcelReporteOrdenado(
       columnas: COLUMNAS_CONTEO.length,
     });
 
-    escribirTabla(hojaConteo, {
+    const filaTotales = escribirTabla(hojaConteo, {
       filaEncabezado: filaConteo,
       columnas: COLUMNAS_CONTEO,
       filas: reporte.conteoPorProducto,
+    });
+
+    // La misma fila de Total que cierra la tabla en pantalla. Ojo con PEDIDOS:
+    // es el total de órdenes del reporte, así que una orden-combo cuenta una
+    // sola vez aunque aparezca en la fila de cada producto que la compone —
+    // por eso puede dar menos que la suma de la columna. UNIDADES sí coincide
+    // con la suma, porque cada línea pertenece a un único producto.
+    escribirFilaTotales(hojaConteo, {
+      fila: filaTotales,
+      columnas: COLUMNAS_CONTEO,
+      valores: ["Total", reporte.totalPedidos, reporte.totalUnidades],
     });
   }
 

@@ -147,8 +147,48 @@ for (let i = 1; i <= hojaConteo.rowCount; i++) {
 check("tiene su encabezado",
   Array.from({ length: 3 }, (_, j) => String(hojaConteo.getRow(filaConteo).getCell(j + 1).value ?? "")),
   ["PRODUCTO", "PEDIDOS", "UNIDADES"]);
-check("una fila por producto distinto",
-  hojaConteo.rowCount - filaConteo, reporte.conteoPorProducto.length);
+check("una fila por producto distinto, más la de Total",
+  hojaConteo.rowCount - filaConteo, reporte.conteoPorProducto.length + 1);
+
+/* ── La fila de Total, igual que en pantalla ────────────────────────────── */
+console.log("\n── La hoja de conteo cierra con la fila de Total ──");
+const filaTotal = filaConteo + reporte.conteoPorProducto.length + 1;
+const celdasTotal = Array.from({ length: 3 }, (_, j) =>
+  hojaConteo.getRow(filaTotal).getCell(j + 1));
+
+check("va justo debajo del último producto, sin fila en blanco",
+  String(hojaConteo.getRow(filaTotal - 1).getCell(1).value ?? ""),
+  reporte.conteoPorProducto.at(-1)!.producto);
+check("el rótulo dice Total, como en la web",
+  String(celdasTotal[0].value ?? ""), "Total");
+check("PEDIDOS = el total de órdenes del reporte",
+  celdasTotal[1].value, reporte.totalPedidos);
+check("UNIDADES = el total de unidades del reporte",
+  celdasTotal[2].value, reporte.totalUnidades);
+// 5 órdenes PENDIENTE; unidades 1 + 2 + 1 + 3 + (1+2 del combo) = 10.
+check("y esos valores son los que muestra la pantalla",
+  [reporte.totalPedidos, reporte.totalUnidades], [5, 10]);
+
+// UNIDADES sí cuadra con la suma de la columna (cada línea es de un solo
+// producto). PEDIDOS no tiene por qué: el combo cuenta una vez en el total
+// pero aparece en la fila de cada producto que lo compone.
+check("UNIDADES coincide con la suma de la columna",
+  reporte.conteoPorProducto.reduce((n, c) => n + c.unidades, 0),
+  reporte.totalUnidades);
+check("PEDIDOS es menor que la suma de la columna por el combo",
+  reporte.conteoPorProducto.reduce((n, c) => n + c.pedidos, 0) > reporte.totalPedidos,
+  true);
+
+console.log("\n── Estilo de la fila de Total ──");
+check("negrita en azul de marca, como el resto de los totales",
+  celdasTotal.map((c) => [c.font?.bold, c.font?.color?.argb]),
+  Array(3).fill([true, MARCA.azul]));
+check("línea fina arriba, que la separa de los datos",
+  celdasTotal.map((c) => c.border?.top?.style),
+  Array(3).fill("thin"));
+check("hereda la alineación de cada columna: rótulo a la izquierda, números a la derecha",
+  celdasTotal.map((c) => c.alignment?.horizontal),
+  ["left", "right", "right"]);
 
 /* ── Los anchos de una hoja no deforman la otra ─────────────────────────── */
 console.log("\n── El conteo no deforma los anchos del reporte ──");
