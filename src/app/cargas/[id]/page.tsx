@@ -51,8 +51,8 @@ export default async function PaginaCarga({
         </h1>
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
           {FORMATO_FECHA.format(new Date(carga.creado_en))} ·{" "}
-          {carga.ordenes_nuevas} órdenes nuevas · {carga.ordenes_omitidas}{" "}
-          omitidas
+          {carga.ordenes_nuevas} nuevas · {carga.ordenes_actualizadas}{" "}
+          actualizadas · {carga.ordenes_sin_cambios} sin cambios
         </p>
       </header>
 

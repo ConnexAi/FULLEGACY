@@ -94,8 +94,12 @@ export interface CargaParaGuardar {
 export interface ResumenGuardado {
   carga_id: number;
   ordenes_nuevas: number;
-  ordenes_omitidas: number;
-  ids_omitidos: number[];
+  /** Ya existían y el archivo las trajo con algún dato distinto. */
+  ordenes_actualizadas: number;
+  /** Ya existían y el archivo las trajo idénticas. */
+  ordenes_sin_cambios: number;
+  /** Los ids que ya estaban en la base antes de esta carga. */
+  ids_existentes: number[];
   lineas_insertadas: number;
   productos_nuevos: number;
   variaciones_nuevas: number;
@@ -115,7 +119,10 @@ export interface ResumenArchivo {
   erroresMuestra: FilaConError[];
   ordenesEnArchivo: number;
   ordenesNuevas: number;
-  ordenesOmitidas: number;
+  /** Ya existían y este archivo las trajo con datos distintos. */
+  ordenesActualizadas: number;
+  /** Ya existían y este archivo las trajo idénticas. */
+  ordenesSinCambios: number;
   /** Órdenes que se guardaron pero perdieron alguna línea por filas con error. */
   ordenesIncompletas: number;
   lineasInsertadas: number;

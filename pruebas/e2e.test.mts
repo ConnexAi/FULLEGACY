@@ -88,6 +88,7 @@ for (const m of [
   "20260908100000_historial_mensual.sql",
   "20260914100000_totales_diarios.sql",
   "20260915100000_historial_mensual_por_producto.sql",
+  "20260924210000_actualizar_ordenes_repetidas.sql",
 ]) {
   await db.exec(readFileSync(`${RAIZ}supabase/migrations/${m}`, "utf8"));
 }
@@ -299,7 +300,8 @@ check("fecha de orden convertida a UTC desde hora bogotana",
 
 const g1 = await guardar(carga1);
 check("BD: órdenes nuevas = 7", g1.ordenes_nuevas, 7);
-check("BD: omitidas = 0", g1.ordenes_omitidas, 0);
+check("BD: ninguna repetida (archivo nuevo)",
+  [g1.ordenes_actualizadas, g1.ordenes_sin_cambios], [0, 0]);
 check("BD: líneas = 9", g1.lineas_insertadas, 9);
 check("BD: productos nuevos = 4", g1.productos_nuevos, 4);
 check("BD: variaciones nuevas = 3", g1.variaciones_nuevas, 3);
@@ -345,8 +347,10 @@ const g2 = await guardar(agruparCarga(p2.filas, {
   filas_con_error: p2.errores.length,
 }));
 check("solo entra la orden nueva", g2.ordenes_nuevas, 1);
-check("las repetidas se omiten", g2.ordenes_omitidas, 2);
-check("ids omitidos", (g2.ids_omitidos as number[]).map(Number).sort(), [1001, 1003]);
+// Las dos repetidas ya no se descartan: se reevalúan contra el archivo nuevo.
+check("las repetidas se reevalúan",
+  [g2.ordenes_actualizadas, g2.ordenes_sin_cambios], [1, 1]);
+check("ids que ya existían", (g2.ids_existentes as number[]).map(Number).sort(), [1001, 1003]);
 check("no se duplicaron líneas del combo",
   Number((await db.query<{c:number}>("select count(*)::int c from orden_productos where orden_id=1003")).rows[0].c), 2);
 check("total de órdenes en BD = 8",
@@ -357,13 +361,14 @@ check("el mismo PRODUCTO ID agrupa sus 2 variaciones",
   Number((await db.query<{c:number}>("select count(*)::int c from producto_variaciones where producto_id=2105813")).rows[0].c), 2);
 
 console.log("\n── Historial de cargas ──");
-const hist = (await db.query<{nombre_archivo:string; ordenes_nuevas:number; ordenes_omitidas:number; filas_con_error:number}>(
-  "select nombre_archivo, ordenes_nuevas, ordenes_omitidas, filas_con_error from cargas order by id"
+const hist = (await db.query<{nombre_archivo:string; ordenes_nuevas:number; ordenes_actualizadas:number; ordenes_sin_cambios:number; filas_con_error:number}>(
+  "select nombre_archivo, ordenes_nuevas, ordenes_actualizadas, ordenes_sin_cambios, filas_con_error from cargas order by id"
 )).rows;
 check("dos cargas registradas", hist.map(h => h.nombre_archivo), ["archivo1.xlsx", "archivo2.xlsx"]);
 check("la 1ª guardó 7 órdenes", Number(hist[0].ordenes_nuevas), 7);
 check("la 1ª dejó registradas sus 2 filas con error", Number(hist[0].filas_con_error), 2);
-check("la 2ª omitió 2 duplicadas", Number(hist[1].ordenes_omitidas), 2);
+check("la 2ª reevaluó sus 2 repetidas",
+  [Number(hist[1].ordenes_actualizadas), Number(hist[1].ordenes_sin_cambios)], [1, 1]);
 check("toda orden quedó ligada a una carga",
   Number((await db.query<{c:number}>("select count(*)::int c from ordenes where carga_id is null")).rows[0].c), 0);
 

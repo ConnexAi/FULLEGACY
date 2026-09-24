@@ -23,6 +23,7 @@ const MIGRACIONES = [
   "20260908100000_historial_mensual.sql",
   "20260914100000_totales_diarios.sql",
   "20260915100000_historial_mensual_por_producto.sql",
+  "20260924210000_actualizar_ordenes_repetidas.sql",
 ];
 
 // PGlite vuelca todo su bundle en el stack: sobra ruido para leer un fallo.
@@ -104,7 +105,8 @@ const carga1 = {
 
 const r1 = await procesar(carga1);
 check("órdenes nuevas = 3", r1.ordenes_nuevas, 3);
-check("órdenes omitidas = 0", r1.ordenes_omitidas, 0);
+check("ninguna repetida (archivo nuevo)",
+  [r1.ordenes_actualizadas, r1.ordenes_sin_cambios], [0, 0]);
 check("líneas insertadas = 4 (1+1+2 del combo)", r1.lineas_insertadas, 4);
 check("productos nuevos = 2", r1.productos_nuevos, 2);
 check("variaciones nuevas = 3", r1.variaciones_nuevas, 3);
@@ -118,18 +120,20 @@ check("el combo 1003 quedó como 2 filas", combo, [
 ]);
 
 /* ------------------------------------------------------------------ */
-console.log("\n── Carga 2: el MISMO archivo otra vez (duplicados) ──");
+console.log("\n── Carga 2: el MISMO archivo otra vez (nada que actualizar) ──");
 
 const r2 = await procesar(carga1);
 check("órdenes nuevas = 0", r2.ordenes_nuevas, 0);
-check("órdenes omitidas = 3", r2.ordenes_omitidas, 3);
-check("ids omitidos", r2.ids_omitidos.map(Number).sort(), [1001, 1002, 1003]);
-check("líneas insertadas = 0", r2.lineas_insertadas, 0);
+// El archivo es idéntico: el `is distinct from` no encuentra nada que cambiar.
+check("actualizadas = 0, sin cambios = 3",
+  [r2.ordenes_actualizadas, r2.ordenes_sin_cambios], [0, 3]);
+check("ids que ya existían", r2.ids_existentes.map(Number).sort(), [1001, 1002, 1003]);
+check("líneas insertadas = 0 (orden_productos no se toca)", r2.lineas_insertadas, 0);
 check("no se duplicó ninguna línea", Number((await db.query("select count(*)::int c from orden_productos")).rows[0].c), 4);
 check("no se duplicó ninguna orden", Number((await db.query("select count(*)::int c from ordenes")).rows[0].c), 3);
 
 /* ------------------------------------------------------------------ */
-console.log("\n── Carga 3: archivo mixto (una repetida + una nueva) ──");
+console.log("\n── Carga 3: archivo mixto (una repetida que SÍ cambió + una nueva) ──");
 
 const r3 = await procesar({
   productos: [{ id: 2105813, nombre: "Hydra", sku: null }],
@@ -137,7 +141,9 @@ const r3 = await procesar({
     { id: 2109232, producto_id: 2105813, sku: "463830-0", texto_variacion: "1 unidad", unidades_extraidas: 1 },
   ],
   ordenes: [
-    // Ya existe y además viene con otro estado: debe quedar intacta.
+    // Ya existe y viene con otro estado: ahora debe actualizarse.
+    // Ojo que trae fecha_guia_generada en NULL: el coalesce tiene que
+    // conservar la que ya estaba guardada.
     { id_orden: 1001, estado: "DEVOLUCION", fecha_orden: "2026-04-03T15:30:00Z",
       fecha_guia_generada: null, numero_guia: "CAMBIADA",
       lineas: [{ producto_id: 2105813, variacion_id: 2109232, cantidad: 99 }] },
@@ -147,13 +153,17 @@ const r3 = await procesar({
   ],
 });
 check("órdenes nuevas = 1", r3.ordenes_nuevas, 1);
-check("órdenes omitidas = 1", r3.ordenes_omitidas, 1);
+check("actualizadas = 1, sin cambios = 0",
+  [r3.ordenes_actualizadas, r3.ordenes_sin_cambios], [1, 0]);
 
 const orden1001 = (await db.query(
-  "select estado, numero_guia from ordenes where id_orden = 1001"
+  "select estado, numero_guia, fecha_guia_generada from ordenes where id_orden = 1001"
 )).rows[0];
-check("la orden duplicada NO se actualizó", orden1001, { estado: "ENTREGADO", numero_guia: "240000001" });
-check("la línea de la orden duplicada NO cambió",
+check("la repetida SÍ se actualizó con el estado y la guía del archivo nuevo",
+  [orden1001.estado, orden1001.numero_guia], ["DEVOLUCION", "CAMBIADA"]);
+check("pero el coalesce conservó la fecha de guía que ya estaba",
+  new Date(orden1001.fecha_guia_generada).toISOString(), "2026-04-04T14:00:00.000Z");
+check("la línea de la orden repetida NO cambió (orden_productos no se toca)",
   (await db.query("select cantidad from orden_productos where orden_id=1001")).rows[0].cantidad, 1);
 
 /* ------------------------------------------------------------------ */
@@ -225,7 +235,8 @@ check("y NO quedó nada a medias (rollback)",
 console.log("\n── Carga 7: archivo vacío ──");
 const r7 = await procesar({ productos: [], variaciones: [], ordenes: [] });
 check("no falla con arrays vacíos",
-  [r7.ordenes_nuevas, r7.ordenes_omitidas, r7.lineas_insertadas], [0, 0, 0]);
+  [r7.ordenes_nuevas, r7.ordenes_actualizadas, r7.ordenes_sin_cambios, r7.lineas_insertadas],
+  [0, 0, 0, 0]);
 
 /* ------------------------------------------------------------------ */
 console.log("\n── Carga 8: PRODUCTO SIN VARIACIÓN (el bug del modelo viejo) ──");
@@ -315,11 +326,12 @@ check("rechaza producto A con variación de B", cruzo, true);
 
 console.log("\n── Historial de cargas ──");
 const cargas = (await db.query(
-  "select id, nombre_archivo, ordenes_nuevas, ordenes_omitidas from cargas order by id"
+  "select id, nombre_archivo, ordenes_nuevas, ordenes_actualizadas, ordenes_sin_cambios from cargas order by id"
 )).rows;
 check("se registró una carga por archivo procesado", cargas.length >= 9, true);
 check("la primera guardó 3 órdenes", Number(cargas[0].ordenes_nuevas), 3);
-check("la segunda (mismo archivo) omitió 3", Number(cargas[1].ordenes_omitidas), 3);
+check("la segunda (mismo archivo) no cambió nada: 3 sin cambios",
+  [Number(cargas[1].ordenes_actualizadas), Number(cargas[1].ordenes_sin_cambios)], [0, 3]);
 check("las órdenes quedan ligadas a su carga",
   Number((await db.query("select count(*)::int c from ordenes where carga_id is null")).rows[0].c), 0);
 const cargaDeLaOrden = (await db.query(

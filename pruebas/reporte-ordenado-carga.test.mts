@@ -36,6 +36,7 @@ const MIGRACIONES = [
   "20260908100000_historial_mensual.sql",
   "20260914100000_totales_diarios.sql",
   "20260915100000_historial_mensual_por_producto.sql",
+  "20260924210000_actualizar_ordenes_repetidas.sql",
 ];
 
 // PGlite vuelca todo su bundle en el stack: sobra ruido para leer un fallo.
@@ -125,14 +126,14 @@ const carga = {
 };
 
 const resultado = (await db.query<{
-  r: { carga_id: number; ordenes_nuevas: number; ordenes_omitidas: number };
+  r: { carga_id: number; ordenes_nuevas: number; ordenes_sin_cambios: number };
 }>(
   "select public.procesar_carga($1::jsonb) as r",
   [JSON.stringify(carga)],
 )).rows[0].r;
 
 check("las 4 órdenes entraron como nuevas", resultado.ordenes_nuevas, 4);
-check("ninguna se omitió", resultado.ordenes_omitidas, 0);
+check("ninguna repetida", resultado.ordenes_sin_cambios, 0);
 const cargaId = resultado.carga_id;
 
 // Esto es lo que hace `obtenerCargaConReporte` en producción: la misma

@@ -139,7 +139,8 @@ function TarjetaResumen({ resumen }: { resumen: ResumenArchivo }) {
       {resumen.ok ? (
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
           <Dato etiqueta="Órdenes nuevas" valor={resumen.ordenesNuevas} destacar />
-          <Dato etiqueta="Omitidas (duplicadas)" valor={resumen.ordenesOmitidas} />
+          <Dato etiqueta="Actualizadas" valor={resumen.ordenesActualizadas} destacar />
+          <Dato etiqueta="Sin cambios" valor={resumen.ordenesSinCambios} />
           <Dato etiqueta="Órdenes en el archivo" valor={resumen.ordenesEnArchivo} />
           <Dato etiqueta="Filas leídas" valor={resumen.filasLeidas} />
           <Dato etiqueta="Líneas guardadas" valor={resumen.lineasInsertadas} />

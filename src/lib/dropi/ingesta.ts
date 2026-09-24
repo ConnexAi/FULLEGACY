@@ -37,7 +37,8 @@ export async function ingerirArchivo(
         erroresMuestra: errores.slice(0, MAX_ERRORES_MOSTRADOS),
         ordenesEnArchivo: 0,
         ordenesNuevas: 0,
-        ordenesOmitidas: 0,
+        ordenesActualizadas: 0,
+        ordenesSinCambios: 0,
         ordenesIncompletas: 0,
         lineasInsertadas: 0,
         productosNuevos: 0,
@@ -65,14 +66,14 @@ export async function ingerirArchivo(
     }
 
     const resumen = data as unknown as ResumenGuardado;
-    const omitidos = new Set(resumen.ids_omitidos ?? []);
+    const yaExistian = new Set(resumen.ids_existentes ?? []);
 
     // Órdenes que sí se guardaron pero perdieron alguna línea porque una fila
     // del combo venía mal. Se avisan aparte: el dato quedó incompleto.
     const idsConError = new Set(
       errores
         .map((e) => e.idOrden)
-        .filter((id): id is number => id !== null && !omitidos.has(id)),
+        .filter((id): id is number => id !== null && !yaExistian.has(id)),
     );
     const ordenesIncompletas = carga.ordenes.filter((o) =>
       idsConError.has(o.id_orden),
@@ -87,7 +88,8 @@ export async function ingerirArchivo(
       erroresMuestra: errores.slice(0, MAX_ERRORES_MOSTRADOS),
       ordenesEnArchivo: carga.ordenes.length,
       ordenesNuevas: Number(resumen.ordenes_nuevas ?? 0),
-      ordenesOmitidas: Number(resumen.ordenes_omitidas ?? 0),
+      ordenesActualizadas: Number(resumen.ordenes_actualizadas ?? 0),
+      ordenesSinCambios: Number(resumen.ordenes_sin_cambios ?? 0),
       ordenesIncompletas,
       lineasInsertadas: Number(resumen.lineas_insertadas ?? 0),
       productosNuevos: Number(resumen.productos_nuevos ?? 0),
@@ -112,7 +114,8 @@ export async function ingerirArchivo(
       erroresMuestra: [],
       ordenesEnArchivo: 0,
       ordenesNuevas: 0,
-      ordenesOmitidas: 0,
+      ordenesActualizadas: 0,
+      ordenesSinCambios: 0,
       ordenesIncompletas: 0,
       lineasInsertadas: 0,
       productosNuevos: 0,

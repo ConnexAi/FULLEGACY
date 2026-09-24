@@ -46,6 +46,9 @@ export interface Database {
           nombre_archivo: string;
           creado_en: string;
           ordenes_nuevas: number;
+          ordenes_actualizadas: number;
+          ordenes_sin_cambios: number;
+          /** Histórico del comportamiento anterior al 2026-09-24. */
           ordenes_omitidas: number;
           filas_leidas: number;
           filas_con_error: number;
@@ -57,6 +60,8 @@ export interface Database {
           nombre_archivo: string;
           creado_en?: string;
           ordenes_nuevas?: number;
+          ordenes_actualizadas?: number;
+          ordenes_sin_cambios?: number;
           ordenes_omitidas?: number;
           filas_leidas?: number;
           filas_con_error?: number;
@@ -68,6 +73,8 @@ export interface Database {
           nombre_archivo?: string;
           creado_en?: string;
           ordenes_nuevas?: number;
+          ordenes_actualizadas?: number;
+          ordenes_sin_cambios?: number;
           ordenes_omitidas?: number;
           filas_leidas?: number;
           filas_con_error?: number;

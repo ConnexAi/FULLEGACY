@@ -36,6 +36,7 @@ const MIGRACIONES = [
   "20260908100000_historial_mensual.sql",
   "20260914100000_totales_diarios.sql",
   "20260915100000_historial_mensual_por_producto.sql",
+  "20260924210000_actualizar_ordenes_repetidas.sql",
 ];
 
 let fallos = 0;

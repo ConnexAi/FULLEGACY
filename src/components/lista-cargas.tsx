@@ -24,7 +24,7 @@ export async function ListaCargas() {
   const { data, error } = await supabase
     .from("cargas")
     .select(
-      "id, nombre_archivo, creado_en, ordenes_nuevas, ordenes_omitidas, filas_con_error",
+      "id, nombre_archivo, creado_en, ordenes_nuevas, ordenes_actualizadas, ordenes_sin_cambios, filas_con_error",
     )
     .order("creado_en", { ascending: false })
     .limit(50);
@@ -53,7 +53,8 @@ export async function ListaCargas() {
             <th className="py-2 pr-4 font-medium">Archivo</th>
             <th className="py-2 pr-4 font-medium">Fecha</th>
             <th className="py-2 pr-4 text-right font-medium">Nuevas</th>
-            <th className="py-2 pr-4 text-right font-medium">Omitidas</th>
+            <th className="py-2 pr-4 text-right font-medium">Actualizadas</th>
+            <th className="py-2 pr-4 text-right font-medium">Sin cambios</th>
             <th className="py-2 text-right font-medium">Con error</th>
           </tr>
         </thead>
@@ -77,8 +78,11 @@ export async function ListaCargas() {
               <td className="py-2 pr-4 text-right tabular-nums">
                 {carga.ordenes_nuevas}
               </td>
+              <td className="py-2 pr-4 text-right tabular-nums">
+                {carga.ordenes_actualizadas}
+              </td>
               <td className="py-2 pr-4 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
-                {carga.ordenes_omitidas}
+                {carga.ordenes_sin_cambios}
               </td>
               <td
                 className={`py-2 text-right tabular-nums ${
