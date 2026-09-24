@@ -100,6 +100,12 @@ export interface ResumenGuardado {
   ordenes_sin_cambios: number;
   /** Los ids que ya estaban en la base antes de esta carga. */
   ids_existentes: number[];
+  /**
+   * Órdenes cuya fila se ignoró por venir desactualizada: ya teníamos fecha de
+   * guía y el archivo la trajo sin ella. Cuentan dentro de `ordenes_sin_cambios`
+   * (en la base no cambió nada); se exponen para diagnóstico.
+   */
+  ids_desactualizados: number[];
   lineas_insertadas: number;
   productos_nuevos: number;
   variaciones_nuevas: number;

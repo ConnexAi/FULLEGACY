@@ -24,6 +24,7 @@ const MIGRACIONES = [
   "20260914100000_totales_diarios.sql",
   "20260915100000_historial_mensual_por_producto.sql",
   "20260924210000_actualizar_ordenes_repetidas.sql",
+  "20260924220000_ignorar_filas_desactualizadas.sql",
 ];
 
 // PGlite vuelca todo su bundle en el stack: sobra ruido para leer un fallo.
@@ -133,7 +134,7 @@ check("no se duplicó ninguna línea", Number((await db.query("select count(*)::
 check("no se duplicó ninguna orden", Number((await db.query("select count(*)::int c from ordenes")).rows[0].c), 3);
 
 /* ------------------------------------------------------------------ */
-console.log("\n── Carga 3: archivo mixto (una repetida que SÍ cambió + una nueva) ──");
+console.log("\n── Carga 3: archivo mixto (una repetida DESACTUALIZADA + una nueva) ──");
 
 const r3 = await procesar({
   productos: [{ id: 2105813, nombre: "Hydra", sku: null }],
@@ -141,9 +142,8 @@ const r3 = await procesar({
     { id: 2109232, producto_id: 2105813, sku: "463830-0", texto_variacion: "1 unidad", unidades_extraidas: 1 },
   ],
   ordenes: [
-    // Ya existe y viene con otro estado: ahora debe actualizarse.
-    // Ojo que trae fecha_guia_generada en NULL: el coalesce tiene que
-    // conservar la que ya estaba guardada.
+    // Ya existe CON fecha de guía, y esta fila viene SIN ella: es un archivo
+    // anterior al despacho, así que se ignora por completo.
     { id_orden: 1001, estado: "DEVOLUCION", fecha_orden: "2026-04-03T15:30:00Z",
       fecha_guia_generada: null, numero_guia: "CAMBIADA",
       lineas: [{ producto_id: 2105813, variacion_id: 2109232, cantidad: 99 }] },
@@ -153,18 +153,41 @@ const r3 = await procesar({
   ],
 });
 check("órdenes nuevas = 1", r3.ordenes_nuevas, 1);
-check("actualizadas = 1, sin cambios = 0",
-  [r3.ordenes_actualizadas, r3.ordenes_sin_cambios], [1, 0]);
+check("la desactualizada no cuenta como actualizada",
+  [r3.ordenes_actualizadas, r3.ordenes_sin_cambios], [0, 1]);
+check("y queda marcada como tal", r3.ids_desactualizados.map(Number), [1001]);
 
 const orden1001 = (await db.query(
   "select estado, numero_guia, fecha_guia_generada from ordenes where id_orden = 1001"
 )).rows[0];
-check("la repetida SÍ se actualizó con el estado y la guía del archivo nuevo",
-  [orden1001.estado, orden1001.numero_guia], ["DEVOLUCION", "CAMBIADA"]);
-check("pero el coalesce conservó la fecha de guía que ya estaba",
+check("la orden quedó intacta: el archivo viejo no le pisó el estado",
+  [orden1001.estado, orden1001.numero_guia], ["ENTREGADO", "240000001"]);
+check("ni la fecha de guía",
   new Date(orden1001.fecha_guia_generada).toISOString(), "2026-04-04T14:00:00.000Z");
 check("la línea de la orden repetida NO cambió (orden_productos no se toca)",
   (await db.query("select cantidad from orden_productos where orden_id=1001")).rows[0].cantidad, 1);
+
+/* ------------------------------------------------------------------ */
+console.log("\n── Carga 3b: la misma repetida, ahora CON fecha de guía: sí actualiza ──");
+
+const r3b = await procesar({
+  archivo: "carga-3b.xlsx",
+  productos: [{ id: 2105813, nombre: "Hydra", sku: null }],
+  variaciones: [
+    { id: 2109232, producto_id: 2105813, sku: "463830-0", texto_variacion: "1 unidad", unidades_extraidas: 1 },
+  ],
+  ordenes: [
+    { id_orden: 1001, estado: "DEVOLUCION", fecha_orden: "2026-04-03T15:30:00Z",
+      fecha_guia_generada: "2026-04-04T14:00:00Z", numero_guia: "240000001",
+      transportadora: "ENVIA", ciudad_destino: "BOGOTA",
+      lineas: [{ producto_id: 2105813, variacion_id: 2109232, cantidad: 1 }] },
+  ],
+});
+check("ninguna desactualizada", r3b.ids_desactualizados.length, 0);
+check("se actualiza", [r3b.ordenes_actualizadas, r3b.ordenes_sin_cambios], [1, 0]);
+check("una orden ya despachada sí puede pasar a DEVOLUCION",
+  (await db.query("select estado from ordenes where id_orden = 1001")).rows[0].estado,
+  "DEVOLUCION");
 
 /* ------------------------------------------------------------------ */
 console.log("\n── Carga 4: misma variación dos veces en la misma orden ──");

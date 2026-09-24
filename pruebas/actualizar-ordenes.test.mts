@@ -37,6 +37,7 @@ const MIGRACIONES = [
   "20260914100000_totales_diarios.sql",
   "20260915100000_historial_mensual_por_producto.sql",
   "20260924210000_actualizar_ordenes_repetidas.sql",
+  "20260924220000_ignorar_filas_desactualizadas.sql",
 ];
 
 process.on("uncaughtException", (e) => {
@@ -73,6 +74,7 @@ interface Resultado {
   ordenes_nuevas: number;
   ordenes_actualizadas: number;
   ordenes_sin_cambios: number;
+  ids_desactualizados: number[];
   lineas_insertadas: number;
 }
 
@@ -102,15 +104,30 @@ const procesar = async (nombre: string, ordenes: OrdenEntrada[]): Promise<Result
     }),
   ])).rows[0].r;
 
-const leerOrden = async (id: number) =>
-  (await db.query<{
-    estado: string; numero_guia: string | null; fecha_guia_generada: string | null;
-    transportadora: string | null; ciudad_destino: string | null; carga_id: number | string;
+/** La fila entera de una orden, normalizada para poder compararla de una. */
+const leerOrden = async (id: number) => {
+  const f = (await db.query<{
+    estado: string; fecha_orden: string; numero_guia: string | null;
+    fecha_guia_generada: string | null; transportadora: string | null;
+    ciudad_destino: string | null; carga_id: number | string;
   }>(
-    `select estado, numero_guia, fecha_guia_generada, transportadora, ciudad_destino, carga_id
+    `select estado, fecha_orden, numero_guia, fecha_guia_generada,
+            transportadora, ciudad_destino, carga_id
        from ordenes where id_orden = $1`,
     [id],
   )).rows[0];
+
+  return {
+    estado: f.estado,
+    fecha_orden: new Date(f.fecha_orden).toISOString(),
+    numero_guia: f.numero_guia,
+    fecha_guia_generada:
+      f.fecha_guia_generada === null ? null : new Date(f.fecha_guia_generada).toISOString(),
+    transportadora: f.transportadora,
+    ciudad_destino: f.ciudad_destino,
+    carga_id: Number(f.carga_id),
+  };
+};
 
 /** Pedidos que el historial mensual cuenta para un producto en septiembre 2026. */
 const pedidosEnHistorial = async (productoId: number) => {
@@ -167,11 +184,13 @@ check("la transportadora también se actualizó", actualizada.transportadora, "E
 check("AHORA el historial mensual sí la cuenta", await pedidosEnHistorial(1), 1);
 
 /* ══════════════════════════════════════════════════════════════════════════
-   2. coalesce: un archivo viejo no puede borrar una guía que ya tenemos
+   2. Una fila más vieja que lo que ya sabemos no puede pisar la orden
    ══════════════════════════════════════════════════════════════════════════ */
-console.log("\n── Se resube por error el archivo viejo (guía en NULL) ──");
+console.log("\n── Se resube por error el archivo viejo (la orden ya tiene guía) ──");
 
-const reSubida = await procesar("manana_0954.xlsx (resubido)", [
+const antesDeResubir = await leerOrden(90688642);
+
+const reSubida = await procesar("manana_0954.xlsx (resubido por error)", [
   {
     id_orden: 90688642, estado: "PENDIENTE", fecha_orden: "2026-09-24T05:00:00Z",
     fecha_guia_generada: null, numero_guia: null,
@@ -179,17 +198,57 @@ const reSubida = await procesar("manana_0954.xlsx (resubido)", [
     lineas: [linea(1, 2)],
   },
 ]);
-check("se procesa como actualización", reSubida.ordenes_actualizadas, 1);
 
-const trasResubir = await leerOrden(90688642);
-check("la fecha de guía NO se borró (coalesce)",
-  new Date(trasResubir.fecha_guia_generada!).toISOString(), "2026-09-24T19:30:00.000Z");
-check("el número de guía tampoco", trasResubir.numero_guia, "024035099001");
-// Estos sí se sobrescriben directo, sin coalesce: es lo acordado.
-check("el estado sí se sobrescribe con el del archivo", trasResubir.estado, "PENDIENTE");
-check("la transportadora también vuelve a NULL", trasResubir.transportadora, null);
-check("y el historial la sigue contando, porque conserva la fecha de guía",
-  await pedidosEnHistorial(1), 1);
+check("la fila se detecta como desactualizada",
+  reSubida.ids_desactualizados.map(Number), [90688642]);
+check("no cuenta como actualizada: cae en sin cambios",
+  [reSubida.ordenes_actualizadas, reSubida.ordenes_sin_cambios], [0, 1]);
+
+// Lo que pidió la regla: la orden queda exactamente igual, campo por campo.
+check("la orden quedó idéntica, sin un solo campo tocado",
+  await leerOrden(90688642), antesDeResubir);
+check("el estado NO volvió a PENDIENTE",
+  (await leerOrden(90688642)).estado, "RECOGIDO POR DROPI");
+check("la transportadora tampoco se borró",
+  (await leerOrden(90688642)).transportadora, "ENVIA");
+check("y el archivo viejo tampoco se lleva la orden a su carga",
+  (await leerOrden(90688642)).carga_id, antesDeResubir.carga_id);
+check("el historial la sigue contando", await pedidosEnHistorial(1), 1);
+
+console.log("\n── Control: un archivo que SÍ trae guía sí actualiza, aunque cambie el estado ──");
+
+const devolucion = await procesar("devolucion.xlsx", [
+  {
+    id_orden: 90688642, estado: "DEVOLUCION", fecha_orden: "2026-09-24T05:00:00Z",
+    fecha_guia_generada: "2026-09-24T19:30:00Z", numero_guia: "024035099001",
+    transportadora: "ENVIA", ciudad_destino: "BOGOTA",
+    lineas: [linea(1, 2)],
+  },
+]);
+check("no se considera desactualizada", devolucion.ids_desactualizados.length, 0);
+check("se actualiza normal",
+  [devolucion.ordenes_actualizadas, devolucion.ordenes_sin_cambios], [1, 0]);
+
+const trasDevolucion = await leerOrden(90688642);
+check("el estado nuevo sí entra", trasDevolucion.estado, "DEVOLUCION");
+check("conserva su guía", trasDevolucion.numero_guia, "024035099001");
+check("y se mudó a la carga nueva", trasDevolucion.carga_id, devolucion.carga_id);
+
+console.log("\n── Control: el coalesce del número de guía sigue vivo ──");
+// El archivo trae la fecha de guía (así que no es desactualizado) pero le
+// falta el número: el que ya teníamos no se pierde.
+const sinNumero = await procesar("sin_numero_guia.xlsx", [
+  {
+    id_orden: 90688642, estado: "ENTREGADO", fecha_orden: "2026-09-24T05:00:00Z",
+    fecha_guia_generada: "2026-09-24T19:30:00Z", numero_guia: null,
+    transportadora: "ENVIA", ciudad_destino: "BOGOTA",
+    lineas: [linea(1, 2)],
+  },
+]);
+check("se actualiza (no es una fila vieja)", sinNumero.ordenes_actualizadas, 1);
+check("el estado cambia", (await leerOrden(90688642)).estado, "ENTREGADO");
+check("pero el número de guía se conserva por el coalesce",
+  (await leerOrden(90688642)).numero_guia, "024035099001");
 
 /* ══════════════════════════════════════════════════════════════════════════
    3. carga_id: la orden se muda a la carga más reciente
