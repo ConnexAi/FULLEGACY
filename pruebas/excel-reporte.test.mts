@@ -196,6 +196,51 @@ check("la columna TIPO queda angosta, no del ancho de un nombre de producto",
   (hoja.getColumn(1).width ?? 0) <= 14, true);
 check("PRODUCTO del reporte sí es ancha", (hoja.getColumn(2).width ?? 0) >= 20, true);
 
+/* ── El Excel de la foto se distingue del de en vivo ────────────────────── */
+//
+// El archivo descargado se despega de la pantalla donde se pidió: dos xlsx del
+// mismo día en la carpeta de Descargas, uno con el estado de hoy y otro con el
+// del martes, tienen que poder distinguirse sin abrirlos.
+console.log("\n── Vista histórica: el archivo lo dice desde el nombre ──");
+
+check("el nombre marca la foto",
+  nombreArchivoExcel(creadoEn, "original"),
+  "reporte-ordenado-como-se-subio-2026-08-27.xlsx");
+check("y el de en vivo no cambió",
+  nombreArchivoExcel(creadoEn, "vivo"), "reporte-ordenado-2026-08-27.xlsx");
+
+const bufferFoto = await generarExcelReporteOrdenado(reporte, {
+  nombreArchivo: "ordenes_productos_20260827.xlsx",
+  creadoEn,
+  vista: "original",
+});
+const rutaFoto = path.join(tmpdir(), "fullegacy-reporte-foto-prueba.xlsx");
+writeFileSync(rutaFoto, Buffer.from(bufferFoto as ArrayBuffer));
+const leidoFoto = new ExcelJS.Workbook();
+await leidoFoto.xlsx.readFile(rutaFoto);
+
+/**
+ * El texto del banner de una hoja: título y subtítulo.
+ *
+ * Se barren las columnas porque el título no arranca en la primera: las de la
+ * izquierda las ocupa el logo.
+ */
+const encabezadoDe = (h: ExcelJS.Worksheet) =>
+  Array.from({ length: 3 }, (_, f) =>
+    Array.from({ length: 10 }, (_, c) =>
+      String(h.getRow(f + 1).getCell(c + 1).value ?? "")).join(" "),
+  ).join(" | ");
+
+const cabeceraFoto = encabezadoDe(leidoFoto.worksheets[0]);
+check("el título dice que es la foto del archivo",
+  cabeceraFoto.includes("foto del archivo"), true);
+check("y el subtítulo avisa que NO es el estado de hoy",
+  cabeceraFoto.includes("NO es el estado de hoy"), true);
+check("el de en vivo dice lo contrario",
+  encabezadoDe(hoja).includes("Estado de ahora"), true);
+check("y no se hace pasar por foto",
+  encabezadoDe(hoja).includes("foto del archivo"), false);
+
 console.log(`\n${fallos === 0 ? "EXCEL CORRECTO" : `${fallos} FALLOS`}`);
 console.log(`(archivo de prueba en ${ruta})`);
 process.exit(fallos ? 1 : 0);

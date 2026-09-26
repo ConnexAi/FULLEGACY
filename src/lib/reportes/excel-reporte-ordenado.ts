@@ -14,6 +14,7 @@ import type {
   ConteoProducto,
   ReporteOrdenado,
 } from "@/lib/reportes/reporte-ordenado";
+import { VISTA_POR_DEFECTO, type VistaReporte } from "@/lib/reportes/vista";
 
 const VACIO = "—";
 
@@ -38,7 +39,26 @@ const COLUMNAS_CONTEO: ColumnaTabla<ConteoProducto>[] = [
 export interface DatosArchivo {
   nombreArchivo: string;
   creadoEn: Date;
+  /**
+   * Qué lectura se está descargando. Va en el título, en el subtítulo y en el
+   * nombre del archivo: una vez descargado el Excel se despega de la pantalla
+   * donde se pidió, y una foto vieja confundida con el estado de hoy hace que
+   * se alisten pedidos que ya salieron.
+   */
+  vista?: VistaReporte;
 }
+
+/** Título y aclaración de cada vista, tal como entran en la hoja. */
+const ENCABEZADO_VISTA: Record<VistaReporte, { titulo: string; nota: string }> = {
+  vivo: {
+    titulo: "Reporte Ordenado",
+    nota: "Estado de ahora",
+  },
+  original: {
+    titulo: "Reporte Ordenado — foto del archivo",
+    nota: "Como se subió originalmente · NO es el estado de hoy",
+  },
+};
 
 /**
  * Arma el Excel del Reporte Ordenado de una carga.
@@ -51,13 +71,15 @@ export async function generarExcelReporteOrdenado(
   archivo: DatosArchivo,
 ): Promise<ExcelJS.Buffer> {
   const libro = crearLibro();
-  const subtitulo = `${archivo.nombreArchivo} · ${formatearFecha(archivo.creadoEn)}`;
+  const vista = archivo.vista ?? VISTA_POR_DEFECTO;
+  const { titulo, nota } = ENCABEZADO_VISTA[vista];
+  const subtitulo = `${archivo.nombreArchivo} · ${formatearFecha(archivo.creadoEn)} · ${nota}`;
 
   // --- Hoja 1: el listado para despachar -------------------------------
   const hoja = libro.addWorksheet("Reporte Ordenado");
 
   const filaTabla = await agregarEncabezado(libro, hoja, {
-    titulo: "Reporte Ordenado",
+    titulo,
     subtitulo,
     columnas: COLUMNAS.length,
   });
@@ -105,9 +127,19 @@ export async function generarExcelReporteOrdenado(
   return libro.xlsx.writeBuffer();
 }
 
-/** Nombre sugerido: reporte-ordenado-2026-08-27.xlsx */
-export function nombreArchivoExcel(creadoEn: Date): string {
-  return `reporte-ordenado-${formatearFechaIso(creadoEn)}.xlsx`;
+/**
+ * Nombre sugerido: reporte-ordenado-2026-08-27.xlsx, o bien
+ * reporte-ordenado-como-se-subio-2026-08-27.xlsx para la foto.
+ *
+ * Los dos archivos se distinguen por el nombre a propósito: si no, quedarían
+ * uno al lado del otro en Descargas sin forma de saber cuál es cuál.
+ */
+export function nombreArchivoExcel(
+  creadoEn: Date,
+  vista: VistaReporte = VISTA_POR_DEFECTO,
+): string {
+  const marca = vista === "original" ? "como-se-subio-" : "";
+  return `reporte-ordenado-${marca}${formatearFechaIso(creadoEn)}.xlsx`;
 }
 
 /** La fecha de la carga, en el día que corresponde en Colombia. */

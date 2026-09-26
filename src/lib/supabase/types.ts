@@ -117,6 +117,58 @@ export interface Database {
           },
         ];
       };
+      carga_ordenes_foto: {
+        Row: {
+          carga_id: number;
+          id_orden: number;
+          estado: string;
+          fecha_orden: string;
+          fecha_guia_generada: string | null;
+          numero_guia: string | null;
+          transportadora: string | null;
+          ciudad_destino: string | null;
+          tipo: "nueva" | "actualizada" | "sin_cambios" | "desactualizada";
+          creado_en: string;
+        };
+        Insert: {
+          carga_id: number;
+          id_orden: number;
+          estado: string;
+          fecha_orden: string;
+          fecha_guia_generada?: string | null;
+          numero_guia?: string | null;
+          transportadora?: string | null;
+          ciudad_destino?: string | null;
+          tipo: "nueva" | "actualizada" | "sin_cambios" | "desactualizada";
+          creado_en?: string;
+        };
+        Update: {
+          carga_id?: number;
+          id_orden?: number;
+          estado?: string;
+          fecha_orden?: string;
+          fecha_guia_generada?: string | null;
+          numero_guia?: string | null;
+          transportadora?: string | null;
+          ciudad_destino?: string | null;
+          tipo?: "nueva" | "actualizada" | "sin_cambios" | "desactualizada";
+          creado_en?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "carga_ordenes_foto_carga_id_fkey";
+            columns: ["carga_id"];
+            referencedRelation: "cargas";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "carga_ordenes_foto_id_orden_fkey";
+            columns: ["id_orden"];
+            referencedRelation: "ordenes";
+            referencedColumns: ["id_orden"];
+          },
+        ];
+      };
       ordenes: {
         Row: {
           id_orden: number;
@@ -232,6 +284,27 @@ export interface Database {
     Views: {
       /** Orden + línea + producto + variación, aplanado. Base de los reportes. */
       v_lineas_carga: {
+        Row: {
+          carga_id: number;
+          id_orden: number;
+          estado: string;
+          estado_normalizado: string;
+          numero_guia: string | null;
+          transportadora: string | null;
+          ciudad_destino: string | null;
+          fecha_orden: string;
+          fecha_guia_generada: string | null;
+          linea: number;
+          producto_id: number;
+          producto_nombre: string;
+          variacion_id: number | null;
+          texto_variacion: string | null;
+          unidades_extraidas: number | null;
+          cantidad: number;
+        };
+        Relationships: [];
+      };
+      v_lineas_carga_foto: {
         Row: {
           carga_id: number;
           id_orden: number;

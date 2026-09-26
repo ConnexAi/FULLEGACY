@@ -20,6 +20,7 @@ const M = [
   "20260915100000_historial_mensual_por_producto.sql",
   "20260924210000_actualizar_ordenes_repetidas.sql",
   "20260924220000_ignorar_filas_desactualizadas.sql",
+  "20260925100000_carga_ordenes_foto.sql",
 ];
 let fallos = 0;
 const ok = (c, t) => { if (!c) fallos++; console.log(`${c ? "  ok  " : "FALLA"} ${t}`); };
