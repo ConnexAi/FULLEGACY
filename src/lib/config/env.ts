@@ -36,4 +36,14 @@ export const envServidor = {
       process.env.SUPABASE_SERVICE_ROLE_KEY,
     ),
   cronSecret: () => requerido("CRON_SECRET", process.env.CRON_SECRET),
+
+  /**
+   * URL de ping del monitor externo del keep-alive (dead man's switch).
+   *
+   * Opcional: devuelve `null` si no está configurada, y eso no es un error —
+   * sin ella el keep-alive funciona igual, solo que nadie avisa si deja de
+   * correr. Ver src/app/api/cron/keep-alive/route.ts.
+   */
+  healthcheckPingUrl: (): string | null =>
+    process.env.HEALTHCHECK_PING_URL?.trim() || null,
 } as const;

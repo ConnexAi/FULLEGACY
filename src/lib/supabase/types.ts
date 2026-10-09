@@ -262,6 +262,28 @@ export interface Database {
           },
         ];
       };
+      /**
+       * Marca de la última ejecución exitosa del keep-alive. Una sola fila,
+       * siempre `id = 1`. Ver la migración 20261009100000_latidos.sql.
+       */
+      latidos: {
+        Row: {
+          id: number;
+          ultimo_latido: string;
+          origen: string | null;
+        };
+        Insert: {
+          id: number;
+          ultimo_latido: string;
+          origen?: string | null;
+        };
+        Update: {
+          id?: number;
+          ultimo_latido?: string;
+          origen?: string | null;
+        };
+        Relationships: [];
+      };
       usuarios_autorizados: {
         Row: {
           correo: string;

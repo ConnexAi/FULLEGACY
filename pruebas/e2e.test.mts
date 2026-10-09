@@ -91,6 +91,7 @@ for (const m of [
   "20260924210000_actualizar_ordenes_repetidas.sql",
   "20260924220000_ignorar_filas_desactualizadas.sql",
   "20260925100000_carga_ordenes_foto.sql",
+  "20261009100000_latidos.sql",
 ]) {
   await db.exec(readFileSync(`${RAIZ}supabase/migrations/${m}`, "utf8"));
 }
