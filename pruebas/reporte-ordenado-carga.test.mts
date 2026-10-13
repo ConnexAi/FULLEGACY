@@ -205,36 +205,62 @@ check("PRODUCTO es solo el nombre, sin cantidades entre paréntesis", fila5004?.
 check("CANTIDAD refleja la cantidad real del producto (7)", fila5004?.cantidad, 7);
 
 /* -------------------------------------------------------------------------- */
-console.log("\n── Conteo por producto: cada componente del combo cuenta su cantidad real ──");
+console.log("\n── Conteo: una fila por producto con normales, más una por tipo de combo ──");
 
-// Hydra aparece en las 4 órdenes: 3 (combo 5001) + 1 (combo 5002) + 7 (normal 5004) = 11.
-const hydra = reporte.conteoPorProducto.find((c) => c.producto === "Hydra");
-check("Hydra: 3 pedidos, 11 unidades (3+1+7, no 1+1+1)", hydra, {
-  producto: "Hydra", pedidos: 3, unidades: 11,
-});
-
-// Waggy pet aparece en los combos 5001 (2) y 5002 (4) = 6, en 2 pedidos.
-const waggy = reporte.conteoPorProducto.find((c) => c.producto === "Waggy pet");
-check("Waggy pet: 2 pedidos, 6 unidades (2+4, no 1+1)", waggy, {
-  producto: "Waggy pet", pedidos: 2, unidades: 6,
-});
-
-// Focus men solo en el combo 5002, con cantidad 2.
-const focus = reporte.conteoPorProducto.find((c) => c.producto === "Focus men");
-check("Focus men: 1 pedido, 2 unidades (no 1)", focus, {
-  producto: "Focus men", pedidos: 1, unidades: 2,
-});
-
-// Dije Carmen y Pulsera vancleef: el combo 1+1 de siempre.
+// Las unidades de cada producto siguen contándose con su cantidad real (lo que
+// se arregló en su momento: 3+1+7, no 1+1+1). Lo que cambió es PEDIDOS, que
+// ahora cuenta solo las órdenes normales, y de dónde salen las filas.
+//
+// De los 5 productos de esta carga, solo Hydra tiene un pedido normal (5004).
+// Waggy pet, Focus men, Dije Carmen y Pulsera vancleef existen únicamente
+// dentro de combos, así que no tienen fila propia.
 check(
-  "Dije Carmen y Pulsera vancleef: 1 pedido, 1 unidad cada uno",
-  reporte.conteoPorProducto.filter((c) =>
-    c.producto === "Dije Carmen" || c.producto === "Pulsera vancleef",
-  ),
+  "la tabla completa: Hydra y los tres tipos de combo",
+  reporte.conteoPorProducto,
   [
-    { producto: "Dije Carmen", pedidos: 1, unidades: 1 },
-    { producto: "Pulsera vancleef", pedidos: 1, unidades: 1 },
+    // 1 pedido normal (5004), pero las 11 unidades: 3 del combo 5001,
+    // 1 del combo 5002 y 7 de la orden normal.
+    { tipo: "PRODUCTO", producto: "Hydra", pedidos: 1, unidades: 11 },
+    // Los combos, alfabéticos por su nombre.
+    { tipo: "COMBO", producto: "COMBO · Dije Carmen (1) + Pulsera vancleef (1)", pedidos: 1, unidades: null },
+    { tipo: "COMBO", producto: "COMBO · Hydra (1) + Waggy pet (4) + Focus men (2)", pedidos: 1, unidades: null },
+    { tipo: "COMBO", producto: "COMBO · Hydra (3) + Waggy pet (2)", pedidos: 1, unidades: null },
   ],
+);
+
+check(
+  "los productos que solo vienen en combo no tienen fila propia",
+  ["Waggy pet", "Focus men", "Dije Carmen", "Pulsera vancleef"]
+    .filter((n) => reporte.conteoPorProducto.some((c) => c.producto === n)),
+  [],
+);
+
+check(
+  "los nombres de las filas de combo son los mismos de la tabla principal",
+  reporte.conteoPorProducto
+    .filter((c) => c.tipo === "COMBO")
+    .map((c) => c.producto)
+    .every((n) => reporte.filas.some((f) => f.producto === n)),
+  true,
+);
+
+// El descuadre que motivó el cambio: antes la columna sumaba 8 pedidos contra
+// un Total de 4, porque cada componente de cada combo contaba uno.
+check(
+  "la columna PEDIDOS suma exactamente el Total",
+  reporte.conteoPorProducto.reduce((n, c) => n + c.pedidos, 0),
+  reporte.totalPedidos,
+);
+
+// UNIDADES no cuadra, y está bien: las 10 unidades de los cuatro productos que
+// solo vienen en combos (6 + 2 + 1 + 1) están en el Total y en ninguna fila.
+check(
+  "UNIDADES: el Total es mayor por las unidades de los productos sin fila",
+  [
+    reporte.conteoPorProducto.reduce((n, c) => n + (c.unidades ?? 0), 0),
+    reporte.totalUnidades,
+  ],
+  [11, 21],
 );
 
 check(

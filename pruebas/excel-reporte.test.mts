@@ -147,8 +147,28 @@ for (let i = 1; i <= hojaConteo.rowCount; i++) {
 check("tiene su encabezado",
   Array.from({ length: 3 }, (_, j) => String(hojaConteo.getRow(filaConteo).getCell(j + 1).value ?? "")),
   ["PRODUCTO", "PEDIDOS", "UNIDADES"]);
-check("una fila por producto distinto, más la de Total",
+check("una fila por cada fila del conteo, más la de Total",
   hojaConteo.rowCount - filaConteo, reporte.conteoPorProducto.length + 1);
+
+// La fila de combo: va después de los productos y lleva UNIDADES vacío,
+// porque sus unidades ya están contadas en las filas de los productos.
+const filasConteo = Array.from(
+  { length: reporte.conteoPorProducto.length },
+  (_, i) => Array.from({ length: 3 }, (_, j) =>
+    hojaConteo.getRow(filaConteo + 1 + i).getCell(j + 1).value),
+);
+check("las filas, tal como quedan en la hoja",
+  filasConteo,
+  [
+    ["Detox hepático", 2, 3],
+    ["Hydra", 1, 1],
+    ["Waggy pet", 1, 3],
+    ["COMBO · Dije Carmen (1) + Pulsera dubai (2)", 1, "—"],
+  ]);
+check("el combo va al final, antes del Total",
+  String(filasConteo.at(-1)![0]).startsWith("COMBO · "), true);
+check("y su celda de UNIDADES lleva el guion, no un cero",
+  filasConteo.at(-1)![2], "—");
 
 /* ── La fila de Total, igual que en pantalla ────────────────────────────── */
 console.log("\n── La hoja de conteo cierra con la fila de Total ──");
@@ -169,15 +189,21 @@ check("UNIDADES = el total de unidades del reporte",
 check("y esos valores son los que muestra la pantalla",
   [reporte.totalPedidos, reporte.totalUnidades], [5, 10]);
 
-// UNIDADES sí cuadra con la suma de la columna (cada línea es de un solo
-// producto). PEDIDOS no tiene por qué: el combo cuenta una vez en el total
-// pero aparece en la fila de cada producto que lo compone.
-check("UNIDADES coincide con la suma de la columna",
-  reporte.conteoPorProducto.reduce((n, c) => n + c.unidades, 0),
-  reporte.totalUnidades);
-check("PEDIDOS es menor que la suma de la columna por el combo",
-  reporte.conteoPorProducto.reduce((n, c) => n + c.pedidos, 0) > reporte.totalPedidos,
-  true);
+// PEDIDOS ahora cuadra exactamente: cada orden cuenta en una sola fila, la de
+// su producto si es normal o la de su tipo de combo si no. Era al revés antes
+// del cambio, y es el descuadre que Diego veía (79 contra 78).
+check("PEDIDOS coincide con la suma de la columna",
+  reporte.conteoPorProducto.reduce((n, c) => n + c.pedidos, 0),
+  reporte.totalPedidos);
+// UNIDADES no tiene por qué: Dije Carmen y Pulsera dubai solo aparecen dentro
+// del combo, así que no tienen fila y sus 3 unidades están en el Total y en
+// ninguna fila. La diferencia es correcta.
+check("UNIDADES: el Total es mayor por los productos que solo vienen en combo",
+  [
+    reporte.conteoPorProducto.reduce((n, c) => n + (c.unidades ?? 0), 0),
+    reporte.totalUnidades,
+  ],
+  [7, 10]);
 
 console.log("\n── Estilo de la fila de Total ──");
 check("negrita en azul de marca, como el resto de los totales",

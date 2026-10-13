@@ -44,10 +44,22 @@ export interface FilaReporte {
   ciudadDestino: string | null;
 }
 
+/**
+ * PRODUCTO → fila de un producto, contando solo sus órdenes normales.
+ * COMBO    → fila de un tipo de combo (mismos productos, mismas cantidades).
+ */
+export type TipoConteo = "PRODUCTO" | "COMBO";
+
 export interface ConteoProducto {
+  tipo: TipoConteo;
   producto: string;
   pedidos: number;
-  unidades: number;
+  /**
+   * `null` en las filas de combo: las unidades de un combo ya están contadas
+   * en las filas de los productos que lo componen, así que repetirlas acá
+   * sería contarlas dos veces. Se muestran como «—».
+   */
+  unidades: number | null;
 }
 
 export interface ReporteOrdenado {
@@ -129,11 +141,7 @@ function construirFila(lineas: LineaCarga[]): FilaConOrden {
 
   const fila: FilaReporte = {
     tipo: esCombo ? "COMBO" : "NORMAL",
-    producto: esCombo
-      ? `COMBO · ${lineas
-          .map((l) => `${l.producto_nombre} (${l.cantidad})`)
-          .join(" + ")}`
-      : primera.producto_nombre,
+    producto: esCombo ? nombreDeCombo(lineas) : primera.producto_nombre,
     variacion: esCombo
       ? lineas.map((l) => l.texto_variacion ?? VACIO).join(" + ")
       : (primera.texto_variacion ?? VACIO),
@@ -192,32 +200,119 @@ function compararFilas(a: FilaConOrden, b: FilaConOrden): number {
   return a.fila.idOrden - b.fila.idOrden;
 }
 
+/** El nombre de un combo, tal como se muestra en la tabla principal. */
+function nombreDeCombo(lineas: LineaCarga[]): string {
+  return `COMBO · ${lineas
+    .map((l) => `${l.producto_nombre} (${l.cantidad})`)
+    .join(" + ")}`;
+}
+
 /**
- * Conteo resumido por producto.
+ * Identidad de un tipo de combo: los mismos productos con las mismas
+ * cantidades.
  *
- * En un combo cada producto que lo compone se cuenta por separado, tal como
- * pide el acuerdo: para el conteo, un combo son sus partes.
+ * Se canonicaliza ordenando por nombre, así que no depende de en qué orden
+ * vinieran las líneas en el archivo. Lleva la cantidad adentro a propósito:
+ * "AW chocolate (2) + AW 839 azul (1)" es un tipo distinto de
+ * "AW chocolate (1) + AW 839 azul (1)", porque se alista distinto.
+ */
+function firmaDeCombo(lineas: LineaCarga[]): string {
+  return lineas
+    .map((l) => `${l.producto_nombre}\u0000${l.cantidad}`)
+    .sort()
+    .join("\u0001");
+}
+
+/**
+ * Conteo resumido del Reporte Ordenado.
+ *
+ * La regla anterior contaba un pedido en la fila de cada producto que componía
+ * el combo, así que la columna PEDIDOS sumaba más que el Total: la orden
+ * 92862480 de la carga del 13/10 (AW chocolate + AW 839 azul) aparecía dos
+ * veces, y 78 órdenes se veían como 79 pedidos.
+ *
+ * Ahora cada orden se cuenta en una sola fila:
+ *
+ *   - Fila de producto: PEDIDOS son solo sus órdenes normales. UNIDADES suma
+ *     todas las unidades del producto, también las que llegan dentro de un
+ *     combo — esas unidades hay que alistarlas igual.
+ *   - Fila de combo: una por tipo de combo, con cuántas órdenes de ese tipo
+ *     hay. UNIDADES va vacío para no contar dos veces lo que ya está arriba.
+ *   - Un producto que solo aparece dentro de combos no tiene fila propia: sus
+ *     unidades se leen en el nombre de la fila del combo.
+ *
+ * Consecuencia esperada: la columna PEDIDOS suma exactamente el Total, y la
+ * columna UNIDADES puede sumar MENOS que el total cuando hay productos que
+ * solo vienen en combos. Esa diferencia es correcta, no un descuadre.
  */
 function contarPorProducto(porOrden: Map<number, LineaCarga[]>): ConteoProducto[] {
-  const conteo = new Map<string, { pedidos: Set<number>; unidades: number }>();
+  const productos = new Map<string, { pedidos: number; unidades: number }>();
+  /** Por firma, para que el tipo no dependa del orden de las líneas. */
+  const combos = new Map<string, { nombre: string; idAncla: number; pedidos: number }>();
 
   for (const lineas of porOrden.values()) {
-    for (const linea of lineas) {
-      let actual = conteo.get(linea.producto_nombre);
+    const esCombo = lineas.length > 1;
+
+    if (esCombo) {
+      const firma = firmaDeCombo(lineas);
+      const actual = combos.get(firma);
+
       if (!actual) {
-        actual = { pedidos: new Set(), unidades: 0 };
-        conteo.set(linea.producto_nombre, actual);
+        combos.set(firma, {
+          nombre: nombreDeCombo(lineas),
+          idAncla: lineas[0].id_orden,
+          pedidos: 1,
+        });
+      } else {
+        actual.pedidos += 1;
+        // El nombre se toma de la orden más antigua del tipo, no de la
+        // primera que toque iterar: así el resultado no depende del orden en
+        // que lleguen las filas de la consulta.
+        if (lineas[0].id_orden < actual.idAncla) {
+          actual.nombre = nombreDeCombo(lineas);
+          actual.idAncla = lineas[0].id_orden;
+        }
       }
-      actual.pedidos.add(linea.id_orden);
+    }
+
+    for (const linea of lineas) {
+      let actual = productos.get(linea.producto_nombre);
+      if (!actual) {
+        actual = { pedidos: 0, unidades: 0 };
+        productos.set(linea.producto_nombre, actual);
+      }
+
       actual.unidades += linea.cantidad;
+      // Una orden normal tiene una sola línea, así que esto cuenta la orden
+      // una vez y nada más.
+      if (!esCombo) actual.pedidos += 1;
     }
   }
 
-  return [...conteo.entries()]
+  const filasProducto: ConteoProducto[] = [...productos.entries()]
+    // Sin órdenes normales no hay fila: el producto solo existe en combos.
+    .filter(([, { pedidos }]) => pedidos > 0)
     .map(([producto, { pedidos, unidades }]) => ({
+      tipo: "PRODUCTO" as const,
       producto,
-      pedidos: pedidos.size,
+      pedidos,
       unidades,
     }))
-    .sort((a, b) => a.producto.localeCompare(b.producto, "es", { sensitivity: "base" }));
+    .sort(porNombre);
+
+  const filasCombo: ConteoProducto[] = [...combos.values()]
+    .map(({ nombre, pedidos }) => ({
+      tipo: "COMBO" as const,
+      producto: nombre,
+      pedidos,
+      unidades: null,
+    }))
+    .sort(porNombre);
+
+  // Los combos van después de los productos y antes del Total.
+  return [...filasProducto, ...filasCombo];
+}
+
+function porNombre(a: ConteoProducto, b: ConteoProducto): number {
+  return a.producto.localeCompare(b.producto, "es", { sensitivity: "base" });
 }

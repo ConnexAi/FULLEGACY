@@ -107,7 +107,13 @@ export function ConteoPorProducto({ reporte }: { reporte: ReporteOrdenado }) {
               <td className="py-2 pr-4 text-right tabular-nums">
                 {linea.pedidos}
               </td>
-              <td className="py-2 text-right tabular-nums">{linea.unidades}</td>
+              {/*
+                En un combo las unidades van vacías: ya están contadas en las
+                filas de los productos que lo componen.
+              */}
+              <td className="py-2 text-right tabular-nums">
+                {linea.unidades ?? VACIO}
+              </td>
             </tr>
           ))}
         </tbody>

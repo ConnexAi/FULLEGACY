@@ -31,9 +31,12 @@ const COLUMNAS: ColumnaTabla<FilaReporte>[] = [
 ];
 
 const COLUMNAS_CONTEO: ColumnaTabla<ConteoProducto>[] = [
+  // También lleva los nombres de combo ("COMBO · A (1) + B (2)"), que son
+  // largos; el ajuste automático de ancho se encarga.
   { titulo: "PRODUCTO", valor: (c) => c.producto, anchoMinimo: 24 },
   { titulo: "PEDIDOS", valor: (c) => c.pedidos, alineacion: "right", anchoMinimo: 10 },
-  { titulo: "UNIDADES", valor: (c) => c.unidades, alineacion: "right", anchoMinimo: 10 },
+  // Vacío en las filas de combo: sus unidades ya están en las de producto.
+  { titulo: "UNIDADES", valor: (c) => c.unidades ?? VACIO, alineacion: "right", anchoMinimo: 10 },
 ];
 
 export interface DatosArchivo {
@@ -112,11 +115,16 @@ export async function generarExcelReporteOrdenado(
       filas: reporte.conteoPorProducto,
     });
 
-    // La misma fila de Total que cierra la tabla en pantalla. Ojo con PEDIDOS:
-    // es el total de órdenes del reporte, así que una orden-combo cuenta una
-    // sola vez aunque aparezca en la fila de cada producto que la compone —
-    // por eso puede dar menos que la suma de la columna. UNIDADES sí coincide
-    // con la suma, porque cada línea pertenece a un único producto.
+    // La misma fila de Total que cierra la tabla en pantalla.
+    //
+    // PEDIDOS son las órdenes únicas de la carga, y ahora coincide exactamente
+    // con la suma de la columna: cada orden aparece en una sola fila, la de su
+    // producto si es normal o la de su tipo de combo si no.
+    //
+    // UNIDADES son todas las unidades reales de la carga, y puede dar MÁS que
+    // la suma de la columna: un producto que solo llega dentro de combos no
+    // tiene fila propia, así que sus unidades están en el Total pero no en
+    // ninguna fila. Esa diferencia es correcta.
     escribirFilaTotales(hojaConteo, {
       fila: filaTotales,
       columnas: COLUMNAS_CONTEO,
