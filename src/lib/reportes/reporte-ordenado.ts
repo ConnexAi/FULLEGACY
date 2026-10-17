@@ -322,6 +322,49 @@ export interface ConteoCombo {
  * dos archivos.
  */
 export function contarCombos(ordenes: Iterable<LineaDeCombo[]>): ConteoCombo[] {
+  return [...tiposDeCombo(ordenes).values()]
+    .map(({ nombre, pedidos }) => ({ nombre, pedidos }))
+    .sort(porNombreDeCombo);
+}
+
+/**
+ * Como `contarCombos`, pero separado por una clave (por ejemplo, el día).
+ *
+ * El nombre de cada tipo es el que le da `contarCombos` sobre TODAS las
+ * órdenes recibidas, no solo las de esa clave: así un tipo se llama igual en
+ * todas sus claves y en el conteo general, aunque sus órdenes traigan las
+ * líneas en otro orden.
+ */
+export function contarCombosPorClave<K>(
+  ordenes: Iterable<[K, LineaDeCombo[]]>,
+): Map<K, ConteoCombo[]> {
+  const lista = [...ordenes];
+  const tipos = tiposDeCombo(lista.map(([, lineas]) => lineas));
+
+  const porClave = new Map<K, Map<string, number>>();
+  for (const [clave, lineas] of lista) {
+    if (!esCombo(lineas)) continue;
+
+    const firma = firmaDeCombo(lineas);
+    const deLaClave = porClave.get(clave) ?? new Map<string, number>();
+    deLaClave.set(firma, (deLaClave.get(firma) ?? 0) + 1);
+    porClave.set(clave, deLaClave);
+  }
+
+  return new Map(
+    [...porClave].map(([clave, deLaClave]) => [
+      clave,
+      [...deLaClave]
+        .map(([firma, pedidos]) => ({ nombre: tipos.get(firma)!.nombre, pedidos }))
+        .sort(porNombreDeCombo),
+    ]),
+  );
+}
+
+/** Tipos de combo por firma, con su nombre y cuántas órdenes tuvo cada uno. */
+function tiposDeCombo(
+  ordenes: Iterable<LineaDeCombo[]>,
+): Map<string, { nombre: string; idAncla: number; pedidos: number }> {
   /** Por firma, para que el tipo no dependa del orden de las líneas. */
   const combos = new Map<string, { nombre: string; idAncla: number; pedidos: number }>();
 
@@ -349,9 +392,11 @@ export function contarCombos(ordenes: Iterable<LineaDeCombo[]>): ConteoCombo[] {
     }
   }
 
-  return [...combos.values()]
-    .map(({ nombre, pedidos }) => ({ nombre, pedidos }))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+  return combos;
+}
+
+function porNombreDeCombo(a: ConteoCombo, b: ConteoCombo): number {
+  return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
 }
 
 function porNombre(a: ConteoProducto, b: ConteoProducto): number {

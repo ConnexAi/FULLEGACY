@@ -9,6 +9,7 @@
 
 import {
   contarCombos,
+  contarCombosPorClave,
   esCombo,
   type ConteoCombo,
   type LineaDeCombo,
@@ -123,12 +124,23 @@ export interface FilaDiaCombos {
   noCompletados: number;
 }
 
+/** Un (día, tipo de combo) con al menos un pedido. */
+export interface FilaComboPorDia {
+  dia: number;
+  esJueves: boolean;
+  /** Mismo nombre que en `detalle` y en el Reporte Ordenado. */
+  nombre: string;
+  pedidos: number;
+}
+
 export interface HojaCombos {
   filas: FilaDiaCombos[];
   totalPedidos: number;
   totalNoCompletados: number;
   /** Un renglón por tipo de combo del mes, con el mismo nombre del Reporte Ordenado. */
   detalle: ConteoCombo[];
+  /** Por día ascendente y, dentro del día, por nombre. Sin los días sin combos. */
+  porDia: FilaComboPorDia[];
 }
 
 export interface HistorialMensual {
@@ -317,7 +329,8 @@ export function construirHistorialPorOrden(
   const agregados = new Map<string, AgregadoDia>();
   const conOrdenNormal = new Set<number>();
   const combosPorDia = new Map<number, { pedidos: number; noCompletados: number }>();
-  const ordenesCombo: LineaDeCombo[][] = [];
+  /** Cada orden combo con su día. */
+  const ordenesCombo: [number, LineaDeCombo[]][] = [];
   let totalPedidos = 0;
   let totalUnidades = 0;
 
@@ -352,13 +365,14 @@ export function construirHistorialPorOrden(
         if (noCompletado) delDia.noCompletados += 1;
         combosPorDia.set(dia, delDia);
 
-        ordenesCombo.push(
+        ordenesCombo.push([
+          dia,
           orden.lineas.map((l) => ({
             id_orden: orden.id_orden,
             producto_nombre: nombreDe(l.producto_id),
             cantidad: l.cantidad,
           })),
-        );
+        ]);
       }
     }
   }
@@ -376,7 +390,13 @@ export function construirHistorialPorOrden(
     combos:
       ordenesCombo.length === 0
         ? null
-        : construirHojaCombos(anio, mes, combosPorDia, contarCombos(ordenesCombo)),
+        : construirHojaCombos(
+            anio,
+            mes,
+            combosPorDia,
+            contarCombos(ordenesCombo.map(([, lineas]) => lineas)),
+            contarCombosPorClave(ordenesCombo),
+          ),
     totalPedidos,
     totalUnidades,
   };
@@ -387,6 +407,7 @@ function construirHojaCombos(
   mes: number,
   porDia: Map<number, { pedidos: number; noCompletados: number }>,
   detalle: ConteoCombo[],
+  tiposPorDia: Map<number, ConteoCombo[]>,
 ): HojaCombos {
   const filas: FilaDiaCombos[] = [];
 
@@ -406,6 +427,16 @@ function construirHojaCombos(
     totalPedidos: filas.reduce((n, f) => n + f.pedidos, 0),
     totalNoCompletados: filas.reduce((n, f) => n + f.noCompletados, 0),
     detalle,
+    porDia: [...tiposPorDia]
+      .sort(([a], [b]) => a - b)
+      .flatMap(([dia, tipos]) =>
+        tipos.map(({ nombre, pedidos }) => ({
+          dia,
+          esJueves: diaDeLaSemana(anio, mes, dia) === JUEVES,
+          nombre,
+          pedidos,
+        })),
+      ),
   };
 }
 

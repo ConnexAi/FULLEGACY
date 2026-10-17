@@ -15,12 +15,14 @@ import {
 import {
   AVISO_PRELIMINAR,
   ESTADOS_NO_COMPLETADOS,
+  type FilaComboPorDia,
   type FilaDia,
   type FilaDiaCombos,
   type HistorialMensual,
   type HojaCombos,
   type HojaProducto,
 } from "@/lib/reportes/historial-mensual";
+import type { ConteoCombo } from "@/lib/reportes/reporte-ordenado";
 
 /** Excel no acepta estos caracteres en el nombre de una hoja, ni más de 31. */
 const PROHIBIDOS_EN_HOJA = /[*?:\\/[\]]/g;
@@ -244,67 +246,133 @@ async function escribirHojaCombos(
     columnas,
   );
 
-  escribirDetalleCombos(hoja, filaNota + 2, datos);
+  const filaPorDia = escribirTablaCombinada(hoja, {
+    filaInicio: filaNota + 2,
+    titulo: "Detalle de combos del mes",
+    columnas: COLUMNAS_DETALLE,
+    filas: datos.detalle,
+    total: ["TOTAL", datos.totalPedidos],
+  });
+
+  escribirTablaCombinada(hoja, {
+    // Una fila en blanco entre tablas, como entre la nota y el detalle.
+    filaInicio: filaPorDia + 1,
+    titulo: "Combos por día",
+    columnas: COLUMNAS_POR_DIA,
+    filas: datos.porDia,
+    total: ["TOTAL", null, datos.totalPedidos],
+    fondoDeFila: (fila) => (fila.esJueves ? MARCA.resaltadoSuave : null),
+  });
 }
 
 /**
- * Tabla "Detalle de combos del mes", debajo de la diaria.
- *
- * El nombre del combo ocupa las primeras cuatro columnas combinadas y los
- * pedidos van en la quinta: con `escribirTabla` el nombre caería en la
- * columna DÍA y el ajuste automático la ensancharía para toda la hoja.
+ * Columna de las tablas de debajo de la hoja Combos: puede ocupar varias
+ * columnas de la hoja, combinadas.
  */
-function escribirDetalleCombos(
+interface ColumnaCombinada<T> {
+  titulo: string;
+  /** Primera y última columna de la hoja que ocupa (1 = A). */
+  desde: number;
+  hasta: number;
+  valor: (fila: T) => string | number;
+  alineacion: "left" | "right" | "center";
+}
+
+/** El nombre del combo ocupa las primeras cuatro columnas; los pedidos, la quinta. */
+const COLUMNAS_DETALLE: ColumnaCombinada<ConteoCombo>[] = [
+  { titulo: "TIPO DE COMBO", desde: 1, hasta: 4, valor: (c) => c.nombre, alineacion: "left" },
+  { titulo: "PEDIDOS", desde: 5, hasta: 5, valor: (c) => c.pedidos, alineacion: "right" },
+];
+
+/** DÍA cae sobre la columna DÍA de la tabla diaria; el nombre, de la B a la D. */
+const COLUMNAS_POR_DIA: ColumnaCombinada<FilaComboPorDia>[] = [
+  { titulo: "DÍA", desde: 1, hasta: 1, valor: (f) => f.dia, alineacion: "center" },
+  { titulo: "TIPO DE COMBO", desde: 2, hasta: 4, valor: (f) => f.nombre, alineacion: "left" },
+  { titulo: "PEDIDOS", desde: 5, hasta: 5, valor: (f) => f.pedidos, alineacion: "right" },
+];
+
+/**
+ * Tabla con título debajo de la diaria, con el estilo de marca.
+ *
+ * Los nombres de combo van en columnas combinadas: con `escribirTabla`
+ * caerían en una sola columna y el ajuste automático la ensancharía para toda
+ * la hoja (la columna DÍA quedaría enorme).
+ *
+ * Devuelve la primera fila libre debajo de la fila TOTAL.
+ */
+function escribirTablaCombinada<T>(
   hoja: ExcelJS.Worksheet,
-  filaInicio: number,
-  datos: HojaCombos,
-): void {
-  const ultima = COLUMNAS_COMBOS.length;
+  {
+    filaInicio,
+    titulo,
+    columnas,
+    filas,
+    total,
+    fondoDeFila,
+  }: {
+    filaInicio: number;
+    titulo: string;
+    columnas: ColumnaCombinada<T>[];
+    filas: T[];
+    /** Un valor por columna; `null` la deja vacía. */
+    total: (string | number | null)[];
+    fondoDeFila?: (fila: T) => string | null;
+  },
+): number {
   const fuente = { name: "Calibri", size: 10 } as const;
 
-  const filaEncabezado = agregarTitulo(hoja, filaInicio, "Detalle de combos del mes");
+  /** Escribe una fila: combina, pone los valores y aplica el estilo a cada celda. */
+  const escribirFila = (
+    fila: number,
+    valores: (string | number | null)[],
+    estilo: (celda: ExcelJS.Cell, columna: ColumnaCombinada<T>) => void,
+  ) => {
+    columnas.forEach((columna, i) => {
+      if (columna.hasta > columna.desde) {
+        hoja.mergeCells(fila, columna.desde, fila, columna.hasta);
+      }
+      hoja.getCell(fila, columna.desde).value = valores[i] ?? null;
+      for (let c = columna.desde; c <= columna.hasta; c += 1) {
+        estilo(hoja.getCell(fila, c), columna);
+      }
+    });
+  };
 
-  const celda = (fila: number, columna: number) => hoja.getCell(fila, columna);
-  const combinar = (fila: number) => hoja.mergeCells(fila, 1, fila, ultima - 1);
+  const filaEncabezado = agregarTitulo(hoja, filaInicio, titulo);
 
   // Encabezado, con el mismo estilo que el de la tabla diaria.
-  combinar(filaEncabezado);
-  celda(filaEncabezado, 1).value = "TIPO DE COMBO";
-  celda(filaEncabezado, ultima).value = "PEDIDOS";
-  for (let c = 1; c <= ultima; c += 1) {
-    const cabecera = celda(filaEncabezado, c);
-    cabecera.font = { ...fuente, bold: true, color: { argb: MARCA.crema } };
-    cabecera.fill = { type: "pattern", pattern: "solid", fgColor: { argb: MARCA.azul } };
-    cabecera.alignment = { horizontal: c === ultima ? "right" : "left", vertical: "middle" };
-  }
-
-  datos.detalle.forEach((combo, i) => {
-    const fila = filaEncabezado + 1 + i;
-    combinar(fila);
-    celda(fila, 1).value = combo.nombre;
-    celda(fila, ultima).value = combo.pedidos;
-    for (let c = 1; c <= ultima; c += 1) {
-      const cuerpo = celda(fila, c);
-      cuerpo.font = { ...fuente, color: { argb: MARCA.texto } };
-      cuerpo.alignment = {
-        horizontal: c === ultima ? "right" : "left",
-        vertical: "middle",
-        wrapText: c !== ultima,
-      };
-      cuerpo.border = { bottom: { style: "hair", color: { argb: MARCA.borde } } };
-    }
+  escribirFila(filaEncabezado, columnas.map((c) => c.titulo), (celda, columna) => {
+    celda.font = { ...fuente, bold: true, color: { argb: MARCA.crema } };
+    celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: MARCA.azul } };
+    celda.alignment = { horizontal: columna.alineacion, vertical: "middle" };
   });
 
-  const filaTotal = filaEncabezado + 1 + datos.detalle.length;
-  combinar(filaTotal);
-  celda(filaTotal, 1).value = "TOTAL";
-  celda(filaTotal, ultima).value = datos.totalPedidos;
-  for (let c = 1; c <= ultima; c += 1) {
-    const total = celda(filaTotal, c);
-    total.font = { ...fuente, bold: true, color: { argb: MARCA.azul } };
-    total.alignment = { horizontal: c === ultima ? "right" : "left", vertical: "middle" };
-    total.border = { top: { style: "thin", color: { argb: MARCA.azul } } };
-  }
+  filas.forEach((datos, i) => {
+    const fondo = fondoDeFila?.(datos) ?? null;
+
+    escribirFila(filaEncabezado + 1 + i, columnas.map((c) => c.valor(datos)), (celda, columna) => {
+      celda.font = { ...fuente, color: { argb: MARCA.texto } };
+      celda.alignment = {
+        horizontal: columna.alineacion,
+        vertical: "middle",
+        // Un nombre de combo largo baja de línea en vez de desbordarse.
+        wrapText: columna.hasta > columna.desde,
+      };
+      celda.border = { bottom: { style: "hair", color: { argb: MARCA.borde } } };
+      if (fondo) {
+        celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fondo } };
+      }
+    });
+  });
+
+  const filaTotal = filaEncabezado + 1 + filas.length;
+  escribirFila(filaTotal, total, (celda, columna) => {
+    celda.font = { ...fuente, bold: true, color: { argb: MARCA.azul } };
+    celda.alignment = { horizontal: columna.alineacion, vertical: "middle" };
+    celda.border = { top: { style: "thin", color: { argb: MARCA.azul } } };
+  });
+
+  return filaTotal + 1;
 }
 
 /**

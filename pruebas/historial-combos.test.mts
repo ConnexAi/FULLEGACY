@@ -11,6 +11,7 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import ExcelJS from "exceljs";
 
+import { MARCA } from "@/lib/excel/estilo-marca";
 import { generarExcelHistorialMensual } from "@/lib/reportes/excel-historial-mensual";
 import {
   construirHistorialPorOrden,
@@ -299,6 +300,105 @@ const conProductoCombos = construirHistorialPorOrden(2026, 11, [...productos, { 
 const libroChoque = await reabrir(conProductoCombos, "fullegacy-historial-choque.xlsx");
 check("el producto se numera, la hoja Combos conserva su nombre",
   libroChoque.worksheets.map((h) => h.name), ["Combos (2)", "Combos"]);
+
+/* ── Combos por día ─────────────────────────────────────────────────────── */
+console.log("\n── Combos por día: varios tipos en varios días ──");
+// Enero 2027: el 7 es jueves. La 401 es la orden más antigua del tipo 3 + 2 y
+// fija su nombre; la 405, del mismo tipo, trae las líneas al revés.
+await orden(401, "ENTREGADO",  "2027-01-09T15:00:00Z", [[1, 3], [2, 2]]);
+await orden(402, "ENTREGADO",  "2027-01-04T15:00:00Z", [[1, 1], [2, 1]]);
+await orden(403, "ENTREGADO",  "2027-01-09T16:00:00Z", [[3, 1]]); // normal: no va en Combos
+await orden(404, "DEVOLUCION", "2027-01-12T15:00:00Z", [[1, 1], [4, 1]]);
+await orden(405, "ENTREGADO",  "2027-01-07T15:00:00Z", [[2, 2], [1, 3]]);
+await orden(406, "ENTREGADO",  "2027-01-07T16:00:00Z", [[1, 1], [4, 1]]);
+await orden(407, "ENTREGADO",  "2027-01-07T17:00:00Z", [[1, 1], [4, 1]]);
+// 9 pm del 7 en Bogotá (02:00 UTC del 8): cae en el jueves 7.
+await orden(408, "ENTREGADO",  "2027-01-08T02:00:00Z", [[1, 1], [2, 1]]);
+
+const { historial: enero } = await historialDe(2027, 1);
+const combosEnero = enero.combos!;
+const A1_B1 = "COMBO · AW chocolate (1) + AW 839 azul (1)";
+const A1_S1 = "COMBO · AW chocolate (1) + Solo en combos (1)";
+const A3_B2 = "COMBO · AW chocolate (3) + AW 839 azul (2)";
+
+check("una fila por (día, tipo), por día y luego por nombre; sin días vacíos",
+  combosEnero.porDia.map((f) => [f.dia, f.nombre, f.pedidos]), [
+    [4, A1_B1, 1],
+    [7, A1_B1, 1],
+    [7, A1_S1, 2],
+    [7, A3_B2, 1],
+    [9, A3_B2, 1],
+    [12, A1_S1, 1],
+  ]);
+check("el jueves 7 tiene tres tipos distintos", combosEnero.porDia.filter((f) => f.dia === 7).length, 3);
+check("solo las filas del jueves van marcadas",
+  combosEnero.porDia.filter((f) => f.esJueves).map((f) => f.dia), [7, 7, 7]);
+check("el tipo con las líneas al revés usa el nombre del mes, no uno propio del día",
+  combosEnero.porDia.find((f) => f.dia === 7 && f.pedidos === 1 && f.nombre.includes("(3)"))?.nombre, A3_B2);
+check("los nombres son exactamente los del detalle del mes",
+  [...new Set(combosEnero.porDia.map((f) => f.nombre))].sort(),
+  combosEnero.detalle.map((c) => c.nombre).sort());
+for (const { dia, pedidos } of combosEnero.filas.filter((f) => f.pedidos > 0)) {
+  check(`día ${dia}: suma por día = PEDIDOS de la tabla diaria (${pedidos})`,
+    combosEnero.porDia.filter((f) => f.dia === dia).reduce((n, f) => n + f.pedidos, 0), pedidos);
+}
+check("los días sin combos de la tabla diaria no aparecen",
+  [...new Set(combosEnero.porDia.map((f) => f.dia))],
+  combosEnero.filas.filter((f) => f.pedidos > 0).map((f) => f.dia));
+check("cada tipo suma lo mismo que en el detalle del mes",
+  combosEnero.detalle.map((c) => combosEnero.porDia.filter((f) => f.nombre === c.nombre).reduce((n, f) => n + f.pedidos, 0)),
+  combosEnero.detalle.map((c) => c.pedidos));
+
+console.log("\n── Excel: tabla \"Combos por día\" ──");
+const libroEnero = await reabrir(enero, "fullegacy-historial-combos-por-dia.xlsx");
+const hojaEnero = libroEnero.getWorksheet("Combos")!;
+const filaConTexto = (texto: string) => {
+  for (let f = 1; f <= hojaEnero.rowCount; f += 1) {
+    if (hojaEnero.getCell(f, 1).value === texto) return f;
+  }
+  return -1;
+};
+const tituloPorDia = filaConTexto("Combos por día");
+const tituloDetalle = filaConTexto("Detalle de combos del mes");
+check("va debajo del detalle, con una fila en blanco en medio",
+  tituloPorDia, tituloDetalle + 1 + combosEnero.detalle.length + 1 + 2);
+const celdaEnero = (f: number, c: number) => hojaEnero.getCell(f, c).value;
+check("encabezado: DÍA, TIPO DE COMBO, PEDIDOS",
+  [celdaEnero(tituloPorDia + 1, 1), celdaEnero(tituloPorDia + 1, 2), celdaEnero(tituloPorDia + 1, 5)],
+  ["DÍA", "TIPO DE COMBO", "PEDIDOS"]);
+check("encabezado con el estilo de marca",
+  (hojaEnero.getCell(tituloPorDia + 1, 1).fill as ExcelJS.FillPattern).fgColor?.argb, MARCA.azul);
+const filasExcel = combosEnero.porDia.map((_, i) => tituloPorDia + 2 + i);
+check("filas en el orden esperado",
+  filasExcel.map((f) => [celdaEnero(f, 1), celdaEnero(f, 2), celdaEnero(f, 5)]),
+  combosEnero.porDia.map((f) => [f.dia, f.nombre, f.pedidos]));
+check("el nombre ocupa B:D combinadas, sin ensanchar DÍA",
+  [hojaEnero.getCell(filasExcel[0], 3).isMerged, hojaEnero.getCell(filasExcel[0], 1).isMerged,
+    (hojaEnero.getColumn(1).width ?? 0) < 12],
+  [true, false, true]);
+const fondoDe = (f: number, c: number) =>
+  (hojaEnero.getCell(f, c).fill as ExcelJS.FillPattern | undefined)?.fgColor?.argb ?? null;
+check("las filas del jueves llevan el fondo de jueves en las 5 columnas",
+  filasExcel.map((f) => [1, 2, 3, 4, 5].every((c) => fondoDe(f, c) === MARCA.resaltadoSuave)),
+  combosEnero.porDia.map((f) => f.esJueves));
+// Los días de la tabla diaria arrancan en la fila 6.
+const pedidosTablaDiaria = (dia: number) => celdaEnero(5 + dia, 2);
+for (const dia of [4, 7, 9, 12]) {
+  check(`Excel, día ${dia}: suma de "Combos por día" = tabla diaria`,
+    filasExcel.filter((f) => celdaEnero(f, 1) === dia).reduce((n, f) => n + Number(celdaEnero(f, 5)), 0),
+    pedidosTablaDiaria(dia));
+}
+const totalPorDia = tituloPorDia + 2 + combosEnero.porDia.length;
+const totalDiaria = 5 + 31 + 1;
+const totalDetalle = tituloDetalle + 2 + combosEnero.detalle.length;
+check("fila TOTAL al final", [celdaEnero(totalPorDia, 1), celdaEnero(totalPorDia, 5)], ["TOTAL", 7]);
+check("TOTAL = TOTAL de la tabla diaria = TOTAL del detalle",
+  [celdaEnero(totalPorDia, 5), celdaEnero(totalDiaria, 2), celdaEnero(totalDetalle, 5)], [7, 7, 7]);
+
+console.log("\n── Un mes sin combos sigue sin hoja Combos ──");
+check("diciembre: sin hoja Combos ni tabla por día",
+  (await reabrir((await historialDe(2026, 12)).historial, "fullegacy-historial-sin-combos-2.xlsx"))
+    .worksheets.map((h) => h.name), ["AW chocolate", "Hydra"]);
 
 console.log(`\n${fallos === 0 ? "HISTORIAL CON COMBOS CORRECTO" : `${fallos} FALLOS`}`);
 process.exit(fallos === 0 ? 0 : 1);
