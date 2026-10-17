@@ -1,10 +1,18 @@
 /**
- * Historial mensual: una hoja por producto, una fila por día del mes.
+ * Historial mensual: una hoja por producto, una fila por día del mes, más una
+ * hoja de Combos al final.
  *
  * Se arma desde la base en el momento de la descarga, sin ningún paso de
  * "actualizar": si Diego sube un Excel y descarga el historial enseguida, esas
  * órdenes ya están contadas.
  */
+
+import {
+  contarCombos,
+  esCombo,
+  type ConteoCombo,
+  type LineaDeCombo,
+} from "@/lib/reportes/reporte-ordenado";
 
 /**
  * Estados que, aun habiendo salido a despacho, no terminaron en entrega.
@@ -14,6 +22,12 @@
  * Se comparan normalizados (mayúsculas, sin espacios sobrantes).
  */
 export const ESTADOS_NO_COMPLETADOS = ["DEVOLUCION"] as const;
+
+/** Si el estado (tal como venga) cuenta como no completado. */
+export function esNoCompletado(estado: string): boolean {
+  const normalizado = estado.trim().toUpperCase();
+  return ESTADOS_NO_COMPLETADOS.some((e) => e.trim().toUpperCase() === normalizado);
+}
 
 export const AVISO_PRELIMINAR =
   "Conteo preliminar automático, verificar antes de usar como dato final.";
@@ -99,6 +113,24 @@ export interface HojaProducto {
   totalNoCompletados: number;
 }
 
+/** Una fila de la hoja Combos: un día del mes. Sin unidades (van en cada producto). */
+export interface FilaDiaCombos {
+  dia: number;
+  diaSemana: number;
+  esJueves: boolean;
+  /** Órdenes combo despachadas ese día. */
+  pedidos: number;
+  noCompletados: number;
+}
+
+export interface HojaCombos {
+  filas: FilaDiaCombos[];
+  totalPedidos: number;
+  totalNoCompletados: number;
+  /** Un renglón por tipo de combo del mes, con el mismo nombre del Reporte Ordenado. */
+  detalle: ConteoCombo[];
+}
+
 export interface HistorialMensual {
   anio: number;
   mes: number;
@@ -106,6 +138,12 @@ export interface HistorialMensual {
   etiquetaMes: string;
   /** Solo los productos con al menos un pedido ese mes. */
   hojas: HojaProducto[];
+  /** La hoja Combos. `null` si el mes no tuvo combos (o si no se calculó). */
+  combos: HojaCombos | null;
+  /** Pedidos del mes: la suma de PEDIDOS de todas las hojas, Combos incluida. */
+  totalPedidos: number;
+  /** Todas las unidades del mes, también las de productos que solo vinieron en combos. */
+  totalUnidades: number;
   /** Tamaño del catálogo completo, para mostrar "N de M productos" en la pantalla. */
   totalProductosEnCatalogo: number;
 }
@@ -217,7 +255,157 @@ export function construirHistorialMensual(
     mes,
     etiquetaMes: etiquetaDeMes(anio, mes),
     hojas,
+    combos: null,
+    totalPedidos: hojas.reduce((n, h) => n + h.totalPedidos, 0),
+    totalUnidades: hojas.reduce((n, h) => n + h.totalUnidades, 0),
     totalProductosEnCatalogo: productos.length,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Historial por orden: cada orden en una sola hoja                           */
+/* -------------------------------------------------------------------------- */
+
+/** Una línea de una orden, tal como viene de `historial_mensual_ordenes()`. */
+export interface LineaOrdenDelMes {
+  producto_id: number;
+  cantidad: number;
+}
+
+export interface OrdenDelMes {
+  id_orden: number;
+  /** Ya normalizado en SQL; `esNoCompletado` lo normaliza de todos modos. */
+  estado: string;
+  /** En el orden del archivo. */
+  lineas: LineaOrdenDelMes[];
+}
+
+/** Una fila TAL COMO LA DEVUELVE `historial_mensual_ordenes()`: un día con sus órdenes. */
+export interface DiaConOrdenes {
+  dia: number;
+  ordenes: OrdenDelMes[];
+}
+
+/**
+ * Arma el historial del Excel contando cada orden en UNA sola hoja, con la
+ * misma regla del conteo del Reporte Ordenado:
+ *
+ *   - Hoja de producto: PEDIDOS y NO COMPLETADOS cuentan solo sus órdenes
+ *     normales. UNIDADES suma todas las unidades del producto, también las que
+ *     llegan dentro de un combo.
+ *   - Un producto sin ninguna orden normal en el mes no tiene hoja: sus
+ *     unidades se leen en el detalle de la hoja Combos.
+ *   - Hoja Combos: PEDIDOS y NO COMPLETADOS de las órdenes combo, día por día,
+ *     y el detalle por tipo de combo del mes.
+ *
+ * Consecuencia: para cualquier día, la suma de PEDIDOS de todas las hojas es
+ * el número de órdenes únicas de ese día (`totales_diarios()`).
+ *
+ * Qué es combo, cómo se llama y cómo se agrupa salen de `esCombo` y
+ * `contarCombos` del Reporte Ordenado, no de una copia.
+ */
+export function construirHistorialPorOrden(
+  anio: number,
+  mes: number,
+  productos: Producto[],
+  dias: DiaConOrdenes[],
+): HistorialMensual {
+  const nombres = new Map(productos.map((p) => [p.id, p.nombre]));
+  const nombreDe = (id: number) => nombres.get(id) ?? `Producto ${id}`;
+
+  /** Por producto y día. Incluye días con solo unidades de combo (pedidos 0). */
+  const agregados = new Map<string, AgregadoDia>();
+  const conOrdenNormal = new Set<number>();
+  const combosPorDia = new Map<number, { pedidos: number; noCompletados: number }>();
+  const ordenesCombo: LineaDeCombo[][] = [];
+  let totalPedidos = 0;
+  let totalUnidades = 0;
+
+  for (const { dia, ordenes } of dias) {
+    for (const orden of ordenes) {
+      totalPedidos += 1;
+      const combo = esCombo(orden.lineas);
+      const noCompletado = esNoCompletado(orden.estado);
+
+      for (const linea of orden.lineas) {
+        totalUnidades += linea.cantidad;
+
+        const clave = `${linea.producto_id}:${dia}`;
+        let agregado = agregados.get(clave);
+        if (!agregado) {
+          agregado = { producto_id: linea.producto_id, dia, pedidos: 0, unidades: 0, no_completados: 0 };
+          agregados.set(clave, agregado);
+        }
+
+        agregado.unidades += linea.cantidad;
+        // Una orden normal tiene una sola línea: esto la cuenta una vez.
+        if (!combo) {
+          agregado.pedidos += 1;
+          if (noCompletado) agregado.no_completados += 1;
+          conOrdenNormal.add(linea.producto_id);
+        }
+      }
+
+      if (combo) {
+        const delDia = combosPorDia.get(dia) ?? { pedidos: 0, noCompletados: 0 };
+        delDia.pedidos += 1;
+        if (noCompletado) delDia.noCompletados += 1;
+        combosPorDia.set(dia, delDia);
+
+        ordenesCombo.push(
+          orden.lineas.map((l) => ({
+            id_orden: orden.id_orden,
+            producto_nombre: nombreDe(l.producto_id),
+            cantidad: l.cantidad,
+          })),
+        );
+      }
+    }
+  }
+
+  // Sin órdenes normales en el mes no hay hoja: el producto solo vino en combos.
+  const base = construirHistorialMensual(
+    anio,
+    mes,
+    productos,
+    [...agregados.values()].filter((a) => conOrdenNormal.has(a.producto_id)),
+  );
+
+  return {
+    ...base,
+    combos:
+      ordenesCombo.length === 0
+        ? null
+        : construirHojaCombos(anio, mes, combosPorDia, contarCombos(ordenesCombo)),
+    totalPedidos,
+    totalUnidades,
+  };
+}
+
+function construirHojaCombos(
+  anio: number,
+  mes: number,
+  porDia: Map<number, { pedidos: number; noCompletados: number }>,
+  detalle: ConteoCombo[],
+): HojaCombos {
+  const filas: FilaDiaCombos[] = [];
+
+  for (let dia = 1; dia <= diasDelMes(anio, mes); dia += 1) {
+    const diaSemana = diaDeLaSemana(anio, mes, dia);
+    filas.push({
+      dia,
+      diaSemana,
+      esJueves: diaSemana === JUEVES,
+      pedidos: porDia.get(dia)?.pedidos ?? 0,
+      noCompletados: porDia.get(dia)?.noCompletados ?? 0,
+    });
+  }
+
+  return {
+    filas,
+    totalPedidos: filas.reduce((n, f) => n + f.pedidos, 0),
+    totalNoCompletados: filas.reduce((n, f) => n + f.noCompletados, 0),
+    detalle,
   };
 }
 

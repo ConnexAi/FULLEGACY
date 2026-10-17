@@ -375,6 +375,17 @@ export interface Database {
           dias: Json;
         }[];
       };
+      /**
+       * Órdenes despachadas del mes con sus líneas, una fila por día. Ver
+       * supabase/migrations/20261017100000_historial_mensual_ordenes.sql
+       */
+      historial_mensual_ordenes: {
+        Args: { p_anio: number; p_mes: number };
+        Returns: {
+          dia: number;
+          ordenes: Json;
+        }[];
+      };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

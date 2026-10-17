@@ -24,10 +24,10 @@ export default async function PaginaHistorial({
 
   const historial = await obtenerHistorialMensual(elegido.anio, elegido.mes);
 
-  // `historial.hojas` ya viene filtrada: solo trae los productos con al menos
-  // un pedido este mes, que es exactamente lo que va a tener el Excel.
-  const totalPedidos = historial.hojas.reduce((n, h) => n + h.totalPedidos, 0);
-  const totalUnidades = historial.hojas.reduce((n, h) => n + h.totalUnidades, 0);
+  // Cada orden cuenta una sola vez (en su producto o en Combos), y las
+  // unidades incluyen las de productos que solo vinieron en combos.
+  const { totalPedidos, totalUnidades } = historial;
+  const sinMovimiento = historial.hojas.length === 0 && !historial.combos;
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
@@ -40,8 +40,9 @@ export default async function PaginaHistorial({
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Historial mensual</h1>
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          Un Excel con una hoja por producto y una fila por día del mes. Se
-          arma con los datos que haya en el momento de descargarlo.
+          Un Excel con una hoja por producto, una hoja de combos y una fila
+          por día del mes. Se arma con los datos que haya en el momento de
+          descargarlo.
         </p>
       </header>
 
@@ -73,12 +74,13 @@ export default async function PaginaHistorial({
               {historial.hojas.length}
               <span className="ml-1 text-sm font-normal text-neutral-500 dark:text-neutral-400">
                 de {historial.totalProductosEnCatalogo} en el catálogo
+                {historial.combos ? " + Combos" : ""}
               </span>
             </dd>
           </div>
         </dl>
 
-        {historial.hojas.length === 0 ? (
+        {sinMovimiento ? (
           <p className="rounded-lg border border-black/10 px-4 py-3 text-sm text-neutral-600 dark:border-white/15 dark:text-neutral-300">
             Este mes todavía no tiene órdenes con guía generada. El Excel se
             descarga igual, con una hoja avisando que no hubo movimiento.
@@ -103,10 +105,18 @@ export default async function PaginaHistorial({
             <strong>No completados</strong> cuenta las órdenes despachadas que
             quedaron en {ESTADOS_NO_COMPLETADOS.join(", ")}. {AVISO_PRELIMINAR}
           </li>
+          <li>
+            Cada orden cuenta en <strong>una sola hoja</strong>: la de su
+            producto si trae uno solo, o la hoja <strong>Combos</strong> si
+            trae varios. Las unidades de un combo sí suman en la hoja de cada
+            producto que contiene.
+          </li>
           <li>Los jueves quedan marcados con un fondo azul tenue.</li>
           <li>
-            Un producto sin pedidos ese mes no genera hoja — así el archivo no
-            se llena de hojas en cero a medida que crece el catálogo.
+            Un producto sin pedidos propios ese mes no genera hoja (si solo
+            vino en combos, se ve en el detalle de la hoja Combos) — así el
+            archivo no se llena de hojas en cero a medida que crece el
+            catálogo.
           </li>
         </ul>
       </section>

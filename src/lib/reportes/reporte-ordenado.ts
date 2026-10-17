@@ -137,17 +137,17 @@ interface FilaConOrden {
 
 function construirFila(lineas: LineaCarga[]): FilaConOrden {
   const primera = lineas[0];
-  const esCombo = lineas.length > 1;
+  const combo = esCombo(lineas);
 
   const fila: FilaReporte = {
-    tipo: esCombo ? "COMBO" : "NORMAL",
-    producto: esCombo ? nombreDeCombo(lineas) : primera.producto_nombre,
-    variacion: esCombo
+    tipo: combo ? "COMBO" : "NORMAL",
+    producto: combo ? nombreDeCombo(lineas) : primera.producto_nombre,
+    variacion: combo
       ? lineas.map((l) => l.texto_variacion ?? VACIO).join(" + ")
       : (primera.texto_variacion ?? VACIO),
     // Un combo es un pedido a preparar, no una suma de unidades: las
     // cantidades de cada producto van en la columna PRODUCTO.
-    cantidad: esCombo ? 1 : primera.cantidad,
+    cantidad: combo ? 1 : primera.cantidad,
     numeroGuia: primera.numero_guia,
     idOrden: primera.id_orden,
     transportadora: primera.transportadora,
@@ -157,8 +157,8 @@ function construirFila(lineas: LineaCarga[]): FilaConOrden {
   return {
     fila,
     anclaProducto: primera.producto_nombre,
-    anclaUnidades: esCombo ? null : primera.unidades_extraidas,
-    anclaVariacion: esCombo ? "" : (primera.texto_variacion ?? ""),
+    anclaUnidades: combo ? null : primera.unidades_extraidas,
+    anclaVariacion: combo ? "" : (primera.texto_variacion ?? ""),
   };
 }
 
@@ -200,8 +200,26 @@ function compararFilas(a: FilaConOrden, b: FilaConOrden): number {
   return a.fila.idOrden - b.fila.idOrden;
 }
 
+/**
+ * Lo mínimo que hace falta de cada línea para tratar una orden como combo.
+ *
+ * Es un subconjunto de `LineaCarga` a propósito: así el historial mensual,
+ * que no lee `v_lineas_carga`, usa exactamente estas mismas reglas.
+ */
+export type LineaDeCombo = Pick<LineaCarga, "id_orden" | "producto_nombre" | "cantidad">;
+
+/**
+ * Una orden es COMBO cuando trae más de una línea (más de un producto).
+ *
+ * Es la definición de TIPO = COMBO del reporte, y la que reutiliza el
+ * historial mensual: si cambia, cambia en los dos.
+ */
+export function esCombo(lineas: readonly unknown[]): boolean {
+  return lineas.length > 1;
+}
+
 /** El nombre de un combo, tal como se muestra en la tabla principal. */
-function nombreDeCombo(lineas: LineaCarga[]): string {
+export function nombreDeCombo(lineas: LineaDeCombo[]): string {
   return `COMBO · ${lineas
     .map((l) => `${l.producto_nombre} (${l.cantidad})`)
     .join(" + ")}`;
@@ -216,7 +234,7 @@ function nombreDeCombo(lineas: LineaCarga[]): string {
  * "AW chocolate (2) + AW 839 azul (1)" es un tipo distinto de
  * "AW chocolate (1) + AW 839 azul (1)", porque se alista distinto.
  */
-function firmaDeCombo(lineas: LineaCarga[]): string {
+function firmaDeCombo(lineas: LineaDeCombo[]): string {
   return lineas
     .map((l) => `${l.producto_nombre}\u0000${l.cantidad}`)
     .sort()
@@ -247,33 +265,9 @@ function firmaDeCombo(lineas: LineaCarga[]): string {
  */
 function contarPorProducto(porOrden: Map<number, LineaCarga[]>): ConteoProducto[] {
   const productos = new Map<string, { pedidos: number; unidades: number }>();
-  /** Por firma, para que el tipo no dependa del orden de las líneas. */
-  const combos = new Map<string, { nombre: string; idAncla: number; pedidos: number }>();
 
   for (const lineas of porOrden.values()) {
-    const esCombo = lineas.length > 1;
-
-    if (esCombo) {
-      const firma = firmaDeCombo(lineas);
-      const actual = combos.get(firma);
-
-      if (!actual) {
-        combos.set(firma, {
-          nombre: nombreDeCombo(lineas),
-          idAncla: lineas[0].id_orden,
-          pedidos: 1,
-        });
-      } else {
-        actual.pedidos += 1;
-        // El nombre se toma de la orden más antigua del tipo, no de la
-        // primera que toque iterar: así el resultado no depende del orden en
-        // que lleguen las filas de la consulta.
-        if (lineas[0].id_orden < actual.idAncla) {
-          actual.nombre = nombreDeCombo(lineas);
-          actual.idAncla = lineas[0].id_orden;
-        }
-      }
-    }
+    const combo = esCombo(lineas);
 
     for (const linea of lineas) {
       let actual = productos.get(linea.producto_nombre);
@@ -285,7 +279,7 @@ function contarPorProducto(porOrden: Map<number, LineaCarga[]>): ConteoProducto[
       actual.unidades += linea.cantidad;
       // Una orden normal tiene una sola línea, así que esto cuenta la orden
       // una vez y nada más.
-      if (!esCombo) actual.pedidos += 1;
+      if (!combo) actual.pedidos += 1;
     }
   }
 
@@ -300,17 +294,64 @@ function contarPorProducto(porOrden: Map<number, LineaCarga[]>): ConteoProducto[
     }))
     .sort(porNombre);
 
-  const filasCombo: ConteoProducto[] = [...combos.values()]
-    .map(({ nombre, pedidos }) => ({
+  const filasCombo: ConteoProducto[] = contarCombos(porOrden.values()).map(
+    ({ nombre, pedidos }) => ({
       tipo: "COMBO" as const,
       producto: nombre,
       pedidos,
       unidades: null,
-    }))
-    .sort(porNombre);
+    }),
+  );
 
   // Los combos van después de los productos y antes del Total.
   return [...filasProducto, ...filasCombo];
+}
+
+/** Un tipo de combo y cuántas órdenes de ese tipo hubo. */
+export interface ConteoCombo {
+  nombre: string;
+  pedidos: number;
+}
+
+/**
+ * Agrupa las órdenes combo por tipo (ver `firmaDeCombo`) y cuenta cuántas
+ * hay de cada uno, ordenadas por nombre. Las órdenes normales se ignoran.
+ *
+ * La usan el conteo del Reporte Ordenado y la hoja Combos del historial
+ * mensual, para que un mismo tipo de combo se llame y se agrupe igual en los
+ * dos archivos.
+ */
+export function contarCombos(ordenes: Iterable<LineaDeCombo[]>): ConteoCombo[] {
+  /** Por firma, para que el tipo no dependa del orden de las líneas. */
+  const combos = new Map<string, { nombre: string; idAncla: number; pedidos: number }>();
+
+  for (const lineas of ordenes) {
+    if (!esCombo(lineas)) continue;
+
+    const firma = firmaDeCombo(lineas);
+    const actual = combos.get(firma);
+
+    if (!actual) {
+      combos.set(firma, {
+        nombre: nombreDeCombo(lineas),
+        idAncla: lineas[0].id_orden,
+        pedidos: 1,
+      });
+    } else {
+      actual.pedidos += 1;
+      // El nombre se toma de la orden más antigua del tipo, no de la
+      // primera que toque iterar: así el resultado no depende del orden en
+      // que lleguen las filas de la consulta.
+      if (lineas[0].id_orden < actual.idAncla) {
+        actual.nombre = nombreDeCombo(lineas);
+        actual.idAncla = lineas[0].id_orden;
+      }
+    }
+  }
+
+  return [...combos.values()]
+    .map(({ nombre, pedidos }) => ({ nombre, pedidos }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
 }
 
 function porNombre(a: ConteoProducto, b: ConteoProducto): number {

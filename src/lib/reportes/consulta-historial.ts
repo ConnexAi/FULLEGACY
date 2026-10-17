@@ -4,7 +4,9 @@ import {
   ESTADOS_NO_COMPLETADOS,
   aplanarHistorialMensual,
   construirHistorialMensual,
+  construirHistorialPorOrden,
   resumirPorDia,
+  type DiaConOrdenes,
   type FilaHistorialMensual,
   type HistorialMensual,
   type Producto,
@@ -14,12 +16,46 @@ import {
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 /**
- * Arma el historial de un mes contra la base, en el momento de pedirlo.
+ * Arma el historial de un mes contra la base, en el momento de pedirlo. Es el
+ * del Excel y la pantalla /historial.
+ *
+ * Cada orden cuenta en una sola hoja: las normales en la de su producto y los
+ * combos en la hoja Combos (ver `construirHistorialPorOrden`).
  *
  * No hay archivo persistido ni paso de "actualizar": lo que Diego suba queda
  * reflejado en la siguiente descarga.
  */
 export async function obtenerHistorialMensual(
+  anio: number,
+  mes: number,
+): Promise<HistorialMensual> {
+  const supabase = await crearClienteServidor();
+
+  const [{ data: productos, error: errorProductos }, { data: dias, error: errorDias }] =
+    await Promise.all([
+      supabase.from("productos").select("id, nombre").order("nombre"),
+      // Una fila por día (máximo 31) con las órdenes adentro: el número de
+      // filas no depende de cuántas órdenes tenga el mes.
+      supabase.rpc("historial_mensual_ordenes", { p_anio: anio, p_mes: mes }),
+    ]);
+
+  if (errorProductos) throw new Error(errorProductos.message);
+  if (errorDias) throw new Error(errorDias.message);
+
+  return construirHistorialPorOrden(
+    anio,
+    mes,
+    (productos ?? []) as Producto[],
+    (dias ?? []) as unknown as DiaConOrdenes[],
+  );
+}
+
+/**
+ * Historial agregado por producto, donde un combo cuenta un pedido en cada
+ * producto que lo compone. Solo lo usa el dashboard, que no cambia con la
+ * hoja Combos del Excel.
+ */
+async function obtenerHistorialPorProducto(
   anio: number,
   mes: number,
 ): Promise<HistorialMensual> {
@@ -63,7 +99,7 @@ export async function obtenerTotalesDelMes(
 ): Promise<TotalProducto[]> {
   // `historial.hojas` ya viene filtrada a los productos con pedidos este mes
   // (ver construirHistorialMensual), así que no hace falta filtrar de nuevo.
-  const historial = await obtenerHistorialMensual(anio, mes);
+  const historial = await obtenerHistorialPorProducto(anio, mes);
 
   return historial.hojas
     .map((hoja) => ({

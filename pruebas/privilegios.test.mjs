@@ -22,6 +22,7 @@ const M = [
   "20260924220000_ignorar_filas_desactualizadas.sql",
   "20260925100000_carga_ordenes_foto.sql",
   "20261009100000_latidos.sql",
+  "20261017100000_historial_mensual_ordenes.sql",
 ];
 let fallos = 0;
 const ok = (c, t) => { if (!c) fallos++; console.log(`${c ? "  ok  " : "FALLA"} ${t}`); };
